@@ -1,0 +1,41 @@
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.uv/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Docker artifacts
+*.tar
+*.tar.gz
+
+# Database
+*.db
+*.sqlite3
+data/takeoffai.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+logs/
+*.log
