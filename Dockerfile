@@ -2,24 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Install uv from official image — no curl, no PATH hacks
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+# ── Dependency layer (cached unless pyproject.toml or uv.lock changes) ───────
+COPY pyproject.toml uv.lock ./
+RUN uv sync --no-dev --frozen
 
-# Copy project files
-COPY pyproject.toml .
+# ── Application code ──────────────────────────────────────────────────────────
 COPY backend/ ./backend/
-
-# Install Python dependencies
-RUN uv sync --no-dev
-
-# Copy data seeds
-COPY backend/data/ ./backend/data/
 
 EXPOSE 8000
 
