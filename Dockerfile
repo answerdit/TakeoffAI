@@ -6,7 +6,7 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 # ── Dependency layer (cached unless pyproject.toml or uv.lock changes) ───────
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --no-dev --frozen
 
 # ── Application code ──────────────────────────────────────────────────────────
