@@ -15,7 +15,7 @@ build/
 
 # Node
 node_modules/
-frontend/dist/
+# frontend/dist/ is intentionally tracked — plain HTML/JS, no build step
 frontend/.vite/
 
 # Docker artifacts

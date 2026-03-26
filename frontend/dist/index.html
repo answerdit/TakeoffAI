@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TakeoffAI — by answerd.it</title>
+  <style>
+    /* ── Variables ──────────────────────────────────────────────── */
+    :root {
+      --bg:           #0a0a0a;
+      --bg-card:      #111111;
+      --bg-input:     #1a1a1a;
+      --bg-hover:     #1e1e1e;
+      --border:       #2a2a2a;
+      --border-focus: #f59e0b55;
+      --amber:        #f59e0b;
+      --amber-dim:    #b45309;
+      --amber-glow:   #f59e0b22;
+      --text:         #e5e5e5;
+      --text-muted:   #6b7280;
+      --text-dim:     #9ca3af;
+      --green:        #22c55e;
+      --red:          #ef4444;
+      --radius:       8px;
+      --radius-lg:    12px;
+    }
+
+    /* ── Reset ──────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .logo-name {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--amber);
+    }
+
+    .logo-name span {
+      color: var(--text);
+    }
+
+    .logo-by {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      letter-spacing: 0.02em;
+    }
+
+    .header-badge {
+      font-size: 0.7rem;
+      padding: 3px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────── */
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    /* ── Tabs ───────────────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2rem;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.75rem 1.25rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+      letter-spacing: 0.01em;
+    }
+
+    .tab-btn:hover { color: var(--text-dim); }
+
+    .tab-btn.active {
+      color: var(--amber);
+      border-bottom-color: var(--amber);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Cards ──────────────────────────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .card-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    /* ── Form elements ──────────────────────────────────────────── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .form-grid.cols-3 {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    input, select, textarea {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.9rem;
+      padding: 0.6rem 0.75rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--amber-dim);
+      box-shadow: 0 0 0 3px var(--amber-glow);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 96px;
+    }
+
+    select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 2rem;
+      cursor: pointer;
+    }
+
+    /* ── Slider ─────────────────────────────────────────────────── */
+    .slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .slider-value {
+      font-size: 0.85rem;
+      color: var(--amber);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      min-width: 36px;
+      text-align: right;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      background: var(--border);
+      border: none;
+      border-radius: 999px;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--amber);
+      cursor: pointer;
+      box-shadow: 0 0 0 3px var(--amber-glow);
+    }
+
+    input[type="range"]:focus {
+      outline: none;
+      box-shadow: none;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0.65rem 1.25rem;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      font-family: inherit;
+      letter-spacing: 0.01em;
+    }
+
+    .btn-primary {
+      background: var(--amber);
+      color: #000;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: #fbbf24;
+      box-shadow: 0 0 16px var(--amber-glow);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--bg-input);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover { background: var(--bg-hover); color: var(--text); }
+
+    .btn-sm {
+      padding: 0.4rem 0.85rem;
+      font-size: 0.8rem;
+    }
+
+    .action-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }
+
+    /* ── Spinner ────────────────────────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #00000033;
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error / status ─────────────────────────────────────────── */
+    .error-box {
+      background: #ef444410;
+      border: 1px solid #ef444430;
+      border-radius: var(--radius);
+      color: #f87171;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      margin-top: 1rem;
+    }
+
+    /* ── Results section ────────────────────────────────────────── */
+    .results {
+      margin-top: 1.5rem;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
+    .results-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .confidence-badge {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid;
+    }
+
+    .confidence-high   { color: var(--green); border-color: #22c55e44; background: #22c55e0d; }
+    .confidence-medium { color: var(--amber); border-color: #f59e0b44; background: #f59e0b0d; }
+    .confidence-low    { color: var(--red);   border-color: #ef444444; background: #ef44440d; }
+
+    /* ── Line-item table ────────────────────────────────────────── */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    thead tr {
+      background: #161616;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      text-align: left;
+      padding: 0.6rem 0.85rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    th.right, td.right { text-align: right; }
+
+    tbody tr {
+      border-bottom: 1px solid #1a1a1a;
+      transition: background 0.1s;
+    }
+
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg-hover); }
+
+    td {
+      padding: 0.6rem 0.85rem;
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+
+    td.desc { color: var(--text); font-weight: 500; }
+
+    /* ── Totals block ───────────────────────────────────────────── */
+    .totals {
+      margin-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      width: 280px;
+      padding: 3px 0;
+    }
+
+    .total-row.subtotal { color: var(--text-dim); }
+
+    .total-row.grand {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--amber);
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+      margin-top: 6px;
+    }
+
+    .total-row.grand span:last-child { font-variant-numeric: tabular-nums; }
+
+    /* ── Scenario cards ─────────────────────────────────────────── */
+    .scenarios-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 1.25rem;
+    }
+
+    .scenario-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .scenario-card.recommended {
+      border-color: var(--amber-dim);
+      box-shadow: 0 0 20px var(--amber-glow);
+    }
+
+    .scenario-name {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .scenario-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+    }
+
+    .scenario-card.recommended .scenario-label { color: var(--amber); }
+
+    .rec-pill {
+      font-size: 0.65rem;
+      background: var(--amber);
+      color: #000;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .scenario-price {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+
+    .scenario-card.recommended .scenario-price { color: var(--amber); }
+
+    .scenario-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+    }
+
+    .meta-row span:first-child { color: var(--text-muted); }
+    .meta-row span:last-child  { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+    .win-bar-wrap {
+      background: var(--border);
+      border-radius: 999px;
+      height: 4px;
+      overflow: hidden;
+      margin-top: 2px;
+    }
+
+    .win-bar {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--text-muted);
+      transition: width 0.6s cubic-bezier(.22,1,.36,1);
+    }
+
+    .scenario-card.recommended .win-bar { background: var(--amber); }
+
+    /* ── Proposal narrative ─────────────────────────────────────── */
+    .narrative-wrap {
+      margin-top: 1.25rem;
+    }
+
+    .narrative-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+
+    .narrative-header label { font-size: 0.8rem; color: var(--text-dim); font-weight: 600; }
+
+    textarea.narrative {
+      min-height: 200px;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: var(--text-dim);
+      background: var(--bg-input);
+    }
+
+    /* ── Notes ──────────────────────────────────────────────────── */
+    .notes-block {
+      margin-top: 1rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 1rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ── Toast ──────────────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.65rem 1.1rem;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      box-shadow: 0 8px 24px #00000055;
+      z-index: 999;
+      animation: slideUp 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* ── Responsive ─────────────────────────────────────────────── */
+    @media (max-width: 700px) {
+      .form-grid       { grid-template-columns: 1fr; }
+      .form-grid.cols-3 { grid-template-columns: 1fr; }
+      .scenarios-grid  { grid-template-columns: 1fr; }
+      header           { padding: 0 1rem; }
+      main             { padding: 1.25rem 1rem 3rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <span class="logo-name">Takeoff<span>AI</span></span>
+    <span class="logo-by">by answerd.it</span>
+  </div>
+  <span class="header-badge">Beta</span>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="estimate">Pre-Bid Estimate</button>
+    <button class="tab-btn"        data-tab="strategy">Bid Strategy</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       TAB 1 — PRE-BID ESTIMATE
+  ══════════════════════════════════════════════════════ -->
+  <div id="tab-estimate" class="tab-panel active">
+
+    <div class="card">
+      <div class="card-title">Project Details</div>
+      <div class="form-grid" style="gap:1.1rem">
+
+        <div class="field full">
+          <label for="est-desc">Project Description</label>
+          <textarea id="est-desc" placeholder="e.g. 2,400 sqft single-story commercial office build-out with open floor plan, 2 restrooms, break room. Includes framing, drywall, electrical, plumbing rough-in, and painting." rows="4"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="est-zip">Zip Code</label>
+          <input id="est-zip" type="text" placeholder="76801" maxlength="10" />
+        </div>
+
+        <div class="field">
+          <label for="est-trade">Trade Type</label>
+          <select id="est-trade">
+            <option value="general">General Contractor</option>
+            <option value="concrete">Concrete</option>
+            <option value="framing">Framing</option>
+            <option value="roofing">Roofing</option>
+            <option value="electrical">Electrical</option>
+            <option value="plumbing">Plumbing</option>
+            <option value="painting">Painting</option>
+            <option value="hvac">HVAC / Mechanical</option>
+            <option value="masonry">Masonry</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <div class="slider-row">
+            <div class="slider-header">
+              <label for="est-overhead">Overhead %</label>
+              <span class="slider-value" id="overhead-val">20%</span>
+            </div>
+            <input type="range" id="est-overhead" min="0" max="60" step="1" value="20" />
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="slider-row">
+            <div class="slider-header">
+              <label for="est-margin">Margin %</label>
+              <span class="slider-value" id="margin-val">12%</span>
+            </div>
+            <input type="range" id="est-margin" min="0" max="50" step="1" value="12" />
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn btn-primary" id="est-btn">
+        Calculate Estimate
+      </button>
+      <button class="btn btn-secondary btn-sm" id="est-export" style="display:none">
+        Export CSV
+      </button>
+    </div>
+
+    <div id="est-error"  class="error-box" style="display:none"></div>
+    <div id="est-results" class="results"  style="display:none">
+
+      <div class="results-header">
+        <span class="results-title" id="est-project-label">Estimate</span>
+        <span class="confidence-badge" id="est-confidence"></span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th class="right">Qty</th>
+              <th>Unit</th>
+              <th class="right">Mat $/unit</th>
+              <th class="right">Labor $/unit</th>
+              <th class="right">Total</th>
+            </tr>
+          </thead>
+          <tbody id="est-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="totals" id="est-totals"></div>
+
+      <div class="notes-block" id="est-notes" style="display:none"></div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       TAB 2 — BID STRATEGY
+  ══════════════════════════════════════════════════════ -->
+  <div id="tab-strategy" class="tab-panel">
+
+    <div class="card">
+      <div class="card-title">RFP & Project Context</div>
+      <div class="form-grid" style="gap:1.1rem">
+
+        <div class="field full">
+          <label for="bid-rfp">RFP / Project Details</label>
+          <textarea id="bid-rfp" placeholder="Paste the RFP scope-of-work, specifications, or project requirements here. Include any evaluation criteria, owner preferences, or submission requirements." rows="5"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="bid-type">Project Type</label>
+          <select id="bid-type">
+            <option value="commercial">Commercial</option>
+            <option value="residential">Residential</option>
+            <option value="industrial">Industrial</option>
+            <option value="government">Government</option>
+            <option value="renovation">Renovation / T.I.</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="bid-competitors">Known Competitors <span style="color:var(--text-muted)">(optional)</span></label>
+          <input id="bid-competitors" type="text" placeholder="ABC Construction, XYZ Builders, …" />
+        </div>
+
+      </div>
+    </div>
+
+    <div class="card" id="bid-estimate-notice" style="background:var(--amber-glow); border-color:var(--amber-dim)">
+      <div class="card-title" style="color:var(--amber)">Estimate Data</div>
+      <div style="font-size:0.85rem; color:var(--text-dim)">
+        Run a <strong style="color:var(--text)">Pre-Bid Estimate</strong> first, then come back — the result will be automatically attached.
+        Or paste raw JSON below to override.
+      </div>
+      <div class="field" style="margin-top:0.85rem">
+        <label for="bid-est-json">Estimate JSON <span style="color:var(--text-muted)">(auto-filled or paste)</span></label>
+        <textarea id="bid-est-json" placeholder='{"total_bid": 0, "line_items": [], ...}' rows="3" style="font-family:monospace;font-size:0.78rem"></textarea>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn btn-primary" id="bid-btn">
+        Analyze &amp; Build Strategy
+      </button>
+    </div>
+
+    <div id="bid-error"   class="error-box" style="display:none"></div>
+    <div id="bid-results" class="results"   style="display:none">
+
+      <div class="results-header">
+        <span class="results-title">Bid Scenarios</span>
+      </div>
+
+      <div class="scenarios-grid" id="bid-scenarios"></div>
+
+      <div class="narrative-wrap">
+        <div class="narrative-header">
+          <label>Proposal Narrative</label>
+          <button class="btn btn-secondary btn-sm" id="bid-copy">Copy</button>
+        </div>
+        <textarea class="narrative" id="bid-narrative" readonly></textarea>
+      </div>
+
+      <div class="notes-block" id="bid-notes" style="display:none"></div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Scripts ─────────────────────────────────────────────────────────── -->
+<script>
+  const API_BASE = 'http://localhost:8000';
+
+  /* ── Utilities ──────────────────────────────────────────────────────── */
+
+  function fmt$(n) {
+    if (n == null || isNaN(n)) return '—';
+    return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function setLoading(btn, loading, defaultLabel) {
+    btn.disabled = loading;
+    btn.innerHTML = loading
+      ? `<span class="spinner"></span> Working…`
+      : defaultLabel;
+  }
+
+  function showError(el, msg) {
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  function clearError(el) {
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+
+  function toast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = `<span style="color:var(--green)">✓</span> ${msg}`;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2800);
+  }
+
+  /* ── Tab switching ─────────────────────────────────────────────────── */
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  /* ── Sliders ───────────────────────────────────────────────────────── */
+
+  const overheadSlider = document.getElementById('est-overhead');
+  const marginSlider   = document.getElementById('est-margin');
+  const overheadVal    = document.getElementById('overhead-val');
+  const marginVal      = document.getElementById('margin-val');
+
+  overheadSlider.addEventListener('input', () => overheadVal.textContent = overheadSlider.value + '%');
+  marginSlider.addEventListener('input',   () => marginVal.textContent   = marginSlider.value   + '%');
+
+  /* ── TAB 1: Pre-Bid Estimate ───────────────────────────────────────── */
+
+  let lastEstimate = null;
+
+  const estBtn     = document.getElementById('est-btn');
+  const estExport  = document.getElementById('est-export');
+  const estError   = document.getElementById('est-error');
+  const estResults = document.getElementById('est-results');
+
+  estBtn.addEventListener('click', async () => {
+    const description  = document.getElementById('est-desc').value.trim();
+    const zip_code     = document.getElementById('est-zip').value.trim();
+    const trade_type   = document.getElementById('est-trade').value;
+    const overhead_pct = parseFloat(overheadSlider.value);
+    const margin_pct   = parseFloat(marginSlider.value);
+
+    if (!description) { showError(estError, 'Project description is required.'); return; }
+    if (!zip_code)     { showError(estError, 'Zip code is required.'); return; }
+
+    clearError(estError);
+    estResults.style.display = 'none';
+    estExport.style.display  = 'none';
+    setLoading(estBtn, true, 'Calculate Estimate');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/estimate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description, zip_code, trade_type, overhead_pct, margin_pct }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      lastEstimate = data;
+      renderEstimate(data);
+      // Auto-fill bid strategy textarea
+      document.getElementById('bid-est-json').value = JSON.stringify(data, null, 2);
+
+    } catch (e) {
+      showError(estError, 'Error: ' + e.message);
+    } finally {
+      setLoading(estBtn, false, 'Calculate Estimate');
+    }
+  });
+
+  function renderEstimate(data) {
+    // Project label
+    document.getElementById('est-project-label').textContent =
+      data.project_summary || 'Estimate';
+
+    // Confidence badge
+    const conf = (data.confidence || 'medium').toLowerCase();
+    const badge = document.getElementById('est-confidence');
+    badge.textContent = conf.charAt(0).toUpperCase() + conf.slice(1) + ' Confidence';
+    badge.className = 'confidence-badge confidence-' + conf;
+
+    // Line items
+    const tbody = document.getElementById('est-tbody');
+    tbody.innerHTML = '';
+    (data.line_items || []).forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="desc">${esc(item.description)}</td>
+        <td class="right">${Number(item.quantity).toLocaleString()}</td>
+        <td>${esc(item.unit || '')}</td>
+        <td class="right">${fmt$(item.unit_material_cost)}</td>
+        <td class="right">${fmt$(item.unit_labor_cost)}</td>
+        <td class="right" style="color:var(--text)">${fmt$(item.subtotal)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // Totals
+    const totalsEl = document.getElementById('est-totals');
+    totalsEl.innerHTML = `
+      <div class="total-row subtotal">
+        <span>Subtotal</span>
+        <span>${fmt$(data.subtotal)}</span>
+      </div>
+      <div class="total-row">
+        <span>Overhead (${data.overhead_pct ?? ''}%)</span>
+        <span>${fmt$(data.overhead_amount)}</span>
+      </div>
+      <div class="total-row">
+        <span>Margin (${data.margin_pct ?? ''}%)</span>
+        <span>${fmt$(data.margin_amount)}</span>
+      </div>
+      <div class="total-row grand">
+        <span>TOTAL BID</span>
+        <span>${fmt$(data.total_bid)}</span>
+      </div>
+    `;
+
+    // Notes
+    if (data.notes) {
+      const notesEl = document.getElementById('est-notes');
+      notesEl.textContent = data.notes;
+      notesEl.style.display = 'block';
+    }
+
+    estResults.style.display = 'block';
+    estExport.style.display  = 'inline-flex';
+  }
+
+  /* ── CSV Export ────────────────────────────────────────────────────── */
+
+  estExport.addEventListener('click', () => {
+    if (!lastEstimate) return;
+    const rows = [
+      ['Description', 'Qty', 'Unit', 'Mat $/unit', 'Labor $/unit', 'Total Mat', 'Total Labor', 'Subtotal'],
+      ...(lastEstimate.line_items || []).map(i => [
+        i.description, i.quantity, i.unit,
+        i.unit_material_cost, i.unit_labor_cost,
+        i.total_material, i.total_labor, i.subtotal
+      ]),
+      [],
+      ['', '', '', '', '', '', 'Subtotal',  lastEstimate.subtotal],
+      ['', '', '', '', '', '', `Overhead (${lastEstimate.overhead_pct}%)`, lastEstimate.overhead_amount],
+      ['', '', '', '', '', '', `Margin (${lastEstimate.margin_pct}%)`,     lastEstimate.margin_amount],
+      ['', '', '', '', '', '', 'TOTAL BID', lastEstimate.total_bid],
+    ];
+    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    download('takeoffai_estimate.csv', 'text/csv', csv);
+    toast('CSV exported');
+  });
+
+  function download(filename, type, content) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type }));
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  /* ── TAB 2: Bid Strategy ───────────────────────────────────────────── */
+
+  const bidBtn     = document.getElementById('bid-btn');
+  const bidError   = document.getElementById('bid-error');
+  const bidResults = document.getElementById('bid-results');
+
+  bidBtn.addEventListener('click', async () => {
+    const rfp_text    = document.getElementById('bid-rfp').value.trim();
+    const project_type = document.getElementById('bid-type').value;
+    const competRaw   = document.getElementById('bid-competitors').value.trim();
+    const estJson     = document.getElementById('bid-est-json').value.trim();
+
+    if (!rfp_text) { showError(bidError, 'RFP / project details are required.'); return; }
+    if (!estJson)  { showError(bidError, 'Paste an estimate JSON or run a Pre-Bid Estimate first.'); return; }
+
+    let estimate;
+    try { estimate = JSON.parse(estJson); }
+    catch { showError(bidError, 'Estimate JSON is not valid. Check the format.'); return; }
+
+    const known_competitors = competRaw
+      ? competRaw.split(',').map(s => s.trim()).filter(Boolean)
+      : null;
+
+    clearError(bidError);
+    bidResults.style.display = 'none';
+    setLoading(bidBtn, true, 'Analyze &amp; Build Strategy');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/bid/strategy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estimate, rfp_text, project_type, known_competitors }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      renderStrategy(data);
+
+    } catch (e) {
+      showError(bidError, 'Error: ' + e.message);
+    } finally {
+      setLoading(bidBtn, false, 'Analyze &amp; Build Strategy');
+    }
+  });
+
+  function renderStrategy(data) {
+    const rec = (data.recommended_scenario || '').toLowerCase();
+    const scenarios = data.bid_scenarios || [];
+
+    const grid = document.getElementById('bid-scenarios');
+    grid.innerHTML = '';
+
+    scenarios.forEach(s => {
+      const name     = (s.scenario || s.name || '').toLowerCase();
+      const isRec    = name === rec || s.recommended === true;
+      const winPct   = parseFloat(s.win_probability ?? s.win_pct ?? 0);
+      const markup   = s.markup_pct != null ? s.markup_pct : s.markup;
+      const price    = s.bid_amount ?? s.total_bid ?? s.price;
+      const label    = s.scenario || s.name || name;
+
+      const card = document.createElement('div');
+      card.className = 'scenario-card' + (isRec ? ' recommended' : '');
+      card.innerHTML = `
+        <div class="scenario-name">
+          <span class="scenario-label">${esc(label)}</span>
+          ${isRec ? '<span class="rec-pill">Recommended</span>' : ''}
+        </div>
+        <div class="scenario-price">${fmt$(price)}</div>
+        <div class="scenario-meta">
+          <div class="meta-row">
+            <span>Win probability</span>
+            <span>${winPct}%</span>
+          </div>
+          <div class="win-bar-wrap">
+            <div class="win-bar" style="width:${Math.min(winPct,100)}%"></div>
+          </div>
+          ${markup != null ? `
+          <div class="meta-row" style="margin-top:4px">
+            <span>Markup</span>
+            <span>${markup}%</span>
+          </div>` : ''}
+          ${s.notes ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${esc(s.notes)}</div>` : ''}
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+
+    // Proposal narrative
+    const narrative = data.proposal_narrative || data.proposal || '';
+    document.getElementById('bid-narrative').value = narrative;
+
+    // Strategy notes
+    const notes = data.strategy_notes || data.notes || '';
+    if (notes) {
+      const notesEl = document.getElementById('bid-notes');
+      notesEl.textContent = notes;
+      notesEl.style.display = 'block';
+    }
+
+    bidResults.style.display = 'block';
+  }
+
+  /* ── Copy narrative ────────────────────────────────────────────────── */
+
+  document.getElementById('bid-copy').addEventListener('click', () => {
+    const ta = document.getElementById('bid-narrative');
+    if (!ta.value) return;
+    navigator.clipboard.writeText(ta.value).then(() => toast('Proposal copied to clipboard'));
+  });
+
+  /* ── HTML escape ───────────────────────────────────────────────────── */
+
+  function esc(str) {
+    return String(str ?? '')
+      .replace(/&/g,  '&amp;')
+      .replace(/</g,  '&lt;')
+      .replace(/>/g,  '&gt;')
+      .replace(/"/g,  '&quot;');
+  }
+</script>
+</body>
+</html>
