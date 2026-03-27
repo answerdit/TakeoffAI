@@ -1,0 +1,4 @@
+project_name,description,location,zip_code,bid_date,trade_type,your_bid_amount,won,winning_bid_amount,actual_cost,notes
+Smith Office Remodel,Interior renovation 2400SF — new partitions drop ceiling LVP flooring,Abilene TX,79601,2024-03-15,general,142800,true,138500,128000,Won on best-value pricing vs two other GCs
+Brown County Metal Building,40x60 metal building concrete slab 14ft walls 3 walk doors 2 roll-up doors basic electrical,Brownwood TX,76801,2024-06-22,general,158000,false,141500,,Lost to out-of-town GC who came in low
+Eastland Commercial Remodel,Strip and remodel 3200SF retail space new electrical plumbing restrooms,Eastland TX,76448,2024-09-10,general,224500,true,219000,211000,Won — owner relationship helped close it

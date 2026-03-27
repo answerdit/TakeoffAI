@@ -624,6 +624,7 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="estimate">Pre-Bid Estimate</button>
     <button class="tab-btn"        data-tab="strategy">Bid Strategy</button>
+    <button class="tab-btn"        data-tab="upload">Import Bid History</button>
   </div>
 
   <!-- ══════════════════════════════════════════════════════
@@ -793,6 +794,121 @@
 
       <div class="notes-block" id="bid-notes" style="display:none"></div>
 
+    </div>
+  </div>
+
+  <!-- ── Tab 3: Import Bid History ──────────────────────────────────── -->
+  <div id="tab-upload" class="tab-panel">
+    <div class="card">
+      <h2 class="section-title">Import Bid History</h2>
+      <p style="color:var(--text-dim);margin-bottom:1.5rem;line-height:1.6">
+        Upload your old bids so TakeoffAI can learn how you price jobs. 
+        Every bid you import makes the tournament system smarter.
+        Accepts CSV or Excel. <a id="dl-template" href="#" style="color:var(--amber)">Download template</a>
+      </p>
+
+      <!-- Client ID -->
+      <div class="field-group" style="margin-bottom:1.2rem">
+        <label class="field-label">Client ID</label>
+        <input id="up-client-id" class="field-input" type="text" value="default" 
+               placeholder="e.g. abc_construction" style="max-width:300px">
+        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">
+          Use a short ID with no spaces. Same client = same learning pool.
+        </div>
+      </div>
+
+      <!-- Drop Zone -->
+      <div id="drop-zone" style="
+        border:2px dashed var(--border);border-radius:8px;padding:3rem 2rem;
+        text-align:center;cursor:pointer;transition:border-color .2s;margin-bottom:1.2rem
+      ">
+        <div style="font-size:2rem;margin-bottom:.5rem">📂</div>
+        <div style="color:var(--text-dim);font-size:.95rem">
+          Drop a CSV or Excel file here, or <span style="color:var(--amber);text-decoration:underline">click to browse</span>
+        </div>
+        <div id="up-filename" style="color:var(--green);margin-top:.5rem;font-size:.85rem"></div>
+        <input id="up-file" type="file" accept=".csv,.xlsx,.xls" style="display:none">
+      </div>
+
+      <!-- Manual Entry Toggle -->
+      <details style="margin-bottom:1.2rem">
+        <summary style="color:var(--amber);cursor:pointer;font-size:.9rem;margin-bottom:.8rem">
+          ＋ Add a single bid manually instead
+        </summary>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;padding:.8rem;background:var(--surface-2);border-radius:6px">
+          <div>
+            <label class="field-label">Project Name</label>
+            <input id="m-name" class="field-input" type="text" placeholder="Smith Office Remodel">
+          </div>
+          <div>
+            <label class="field-label">Zip Code</label>
+            <input id="m-zip" class="field-input" type="text" placeholder="76801">
+          </div>
+          <div>
+            <label class="field-label">Your Bid Amount ($)</label>
+            <input id="m-bid" class="field-input" type="number" placeholder="142800">
+          </div>
+          <div>
+            <label class="field-label">Did You Win?</label>
+            <select id="m-won" class="field-input">
+              <option value="">-- unknown --</option>
+              <option value="true">Yes — won it</option>
+              <option value="false">No — lost it</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Winning Bid (if lost, $)</label>
+            <input id="m-winning" class="field-input" type="number" placeholder="optional">
+          </div>
+          <div>
+            <label class="field-label">Actual Cost (if won, $)</label>
+            <input id="m-actual" class="field-input" type="number" placeholder="optional">
+          </div>
+          <div style="grid-column:span 2">
+            <label class="field-label">Notes</label>
+            <input id="m-notes" class="field-input" type="text" placeholder="optional">
+          </div>
+          <div style="grid-column:span 2">
+            <button id="btn-manual" class="btn-primary" style="width:100%">Add This Bid</button>
+          </div>
+        </div>
+      </details>
+
+      <!-- Upload Button -->
+      <button id="btn-upload" class="btn-primary" style="width:100%;margin-bottom:1.5rem">
+        Upload &amp; Parse Bids
+      </button>
+
+      <div id="up-error" class="error-box" style="display:none"></div>
+
+      <!-- Results -->
+      <div id="up-results" style="display:none">
+        <div id="up-summary" style="
+          background:var(--surface-2);border-radius:6px;padding:1rem 1.2rem;
+          margin-bottom:1rem;font-size:.9rem;line-height:1.8
+        "></div>
+        <div class="table-wrap" style="margin-bottom:1rem">
+          <table id="up-table" style="width:100%">
+            <thead><tr>
+              <th>Project</th><th>Zip</th><th>Bid Amount</th>
+              <th>Won?</th><th>Winning Bid</th><th>Date</th>
+            </tr></thead>
+            <tbody id="up-tbody"></tbody>
+          </table>
+        </div>
+        <div id="up-warnings" style="display:none;margin-bottom:1rem;
+          background:#2a1a00;border:1px solid #a16207;border-radius:6px;padding:.8rem 1rem;
+          font-size:.8rem;color:#fbbf24"></div>
+        <button id="btn-import" class="btn-primary" style="width:100%;background:var(--green)">
+          ✓ Import to Client Profile
+        </button>
+      </div>
+
+      <!-- Import History -->
+      <div id="up-history" style="margin-top:2rem">
+        <div style="color:var(--text-muted);font-size:.8rem;margin-bottom:.5rem">IMPORT HISTORY</div>
+        <div id="history-list" style="font-size:.85rem;color:var(--text-dim)">No imports yet.</div>
+      </div>
     </div>
   </div>
 
@@ -1116,6 +1232,193 @@
       .replace(/>/g,  '&gt;')
       .replace(/"/g,  '&quot;');
   }
+
+  /* ── TAB 3: Import Bid History ─────────────────────────────────────── */
+
+  let parsedRecords = [];
+  const history = JSON.parse(localStorage.getItem('uploadHistory') || '[]');
+
+  function renderHistory() {
+    const el = document.getElementById('history-list');
+    if (!history.length) { el.textContent = 'No imports yet.'; return; }
+    el.innerHTML = history.slice(-5).reverse().map(h =>
+      `<div style="padding:.4rem 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--amber)">${h.client_id}</span> — 
+        ${h.count} bids imported on ${h.date}
+      </div>`
+    ).join('');
+  }
+  renderHistory();
+
+  // Template download
+  document.getElementById('dl-template').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const res = await fetch(`${API_BASE}/api/upload/template/csv`);
+    if (!res.ok) { alert('Template not available yet.'); return; }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'takeoffai_bid_template.csv';
+    a.click();
+  });
+
+  // Drop zone
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('up-file');
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--amber)';
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = 'var(--border)';
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--border)';
+    if (e.dataTransfer.files[0]) {
+      fileInput.files = e.dataTransfer.files;
+      document.getElementById('up-filename').textContent = '📄 ' + e.dataTransfer.files[0].name;
+    }
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0])
+      document.getElementById('up-filename').textContent = '📄 ' + fileInput.files[0].name;
+  });
+
+  // Upload & Parse
+  document.getElementById('btn-upload').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-upload');
+    const errEl = document.getElementById('up-error');
+    clearError(errEl);
+    document.getElementById('up-results').style.display = 'none';
+
+    if (!fileInput.files[0]) { showError(errEl, 'Please select a file first.'); return; }
+
+    const clientId = document.getElementById('up-client-id').value.trim() || 'default';
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('client_id', clientId);
+
+    btn.textContent = 'Parsing…'; btn.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/upload/bids`, { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) { showError(errEl, data.detail || 'Upload failed.'); return; }
+
+      parsedRecords = data.records || [];
+      renderUploadResults(data, clientId);
+    } catch (e) {
+      showError(errEl, 'Error connecting to server. Make sure TakeoffAI is running.');
+    } finally {
+      btn.textContent = 'Upload & Parse Bids'; btn.disabled = false;
+    }
+  });
+
+  function renderUploadResults(data, clientId) {
+    const resEl = document.getElementById('up-results');
+    const tbody = document.getElementById('up-tbody');
+    const summary = document.getElementById('up-summary');
+    const warns = document.getElementById('up-warnings');
+
+    const won = (data.records || []).filter(r => r.won === true).length;
+    const lost = (data.records || []).filter(r => r.won === false).length;
+    const unknown = (data.records || []).filter(r => r.won === null).length;
+    const winRate = won + lost > 0 ? Math.round(won / (won + lost) * 100) : null;
+
+    summary.innerHTML = `
+      <strong style="color:var(--amber)">${data.records_parsed} bids parsed</strong> from ${fileInput.files[0]?.name || 'upload'}<br>
+      Won: <span style="color:var(--green)">${won}</span> &nbsp;|&nbsp;
+      Lost: <span style="color:#f87171">${lost}</span> &nbsp;|&nbsp;
+      Unknown: ${unknown}
+      ${winRate !== null ? `&nbsp;|&nbsp; Win rate: <strong>${winRate}%</strong>` : ''}
+      &nbsp;|&nbsp; Client: <span style="color:var(--amber)">${clientId}</span>
+    `;
+
+    tbody.innerHTML = (data.records || []).map(r => `
+      <tr>
+        <td>${esc(r.project_name || r.description?.slice(0,40) || '—')}</td>
+        <td>${esc(r.zip_code || r.location || '—')}</td>
+        <td style="color:var(--amber)">$${(r.submitted_amount||0).toLocaleString()}</td>
+        <td style="color:${r.won===true?'var(--green)':r.won===false?'#f87171':'var(--text-muted)'}">
+          ${r.won===true?'✓ Won':r.won===false?'✗ Lost':'?'}
+        </td>
+        <td>${r.winning_amount ? '$'+r.winning_amount.toLocaleString() : '—'}</td>
+        <td>${esc(r.bid_date || '—')}</td>
+      </tr>`).join('');
+
+    if (data.warnings?.length) {
+      warns.style.display = 'block';
+      warns.innerHTML = '⚠ ' + data.warnings.join('<br>⚠ ');
+    } else {
+      warns.style.display = 'none';
+    }
+
+    resEl.style.display = 'block';
+    toast('Parsed ' + data.records_parsed + ' bids — review and click Import to save');
+  }
+
+  // Import to profile
+  document.getElementById('btn-import').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-import');
+    const clientId = document.getElementById('up-client-id').value.trim() || 'default';
+    btn.textContent = 'Importing…'; btn.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/upload/import`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ client_id: clientId, records: parsedRecords })
+      });
+      const data = await res.json();
+      if (!res.ok) { alert('Import failed: ' + (data.detail || 'unknown error')); return; }
+      history.push({ client_id: clientId, count: parsedRecords.length, date: new Date().toLocaleDateString() });
+      localStorage.setItem('uploadHistory', JSON.stringify(history));
+      renderHistory();
+      document.getElementById('up-results').style.display = 'none';
+      toast(parsedRecords.length + ' bids imported to profile "' + clientId + '"');
+      parsedRecords = [];
+    } catch(e) {
+      alert('Connection error — make sure TakeoffAI is running.');
+    } finally {
+      btn.textContent = '✓ Import to Client Profile'; btn.disabled = false;
+    }
+  });
+
+  // Manual single bid
+  document.getElementById('btn-manual').addEventListener('click', async () => {
+    const clientId = document.getElementById('up-client-id').value.trim() || 'default';
+    const name = document.getElementById('m-name').value.trim();
+    const zip  = document.getElementById('m-zip').value.trim();
+    const bid  = parseFloat(document.getElementById('m-bid').value);
+    const wonVal = document.getElementById('m-won').value;
+
+    if (!name || !zip || !bid) { alert('Project name, zip code, and bid amount are required.'); return; }
+
+    const record = {
+      project_name: name,
+      zip_code: zip,
+      submitted_amount: bid,
+      won: wonVal === 'true' ? true : wonVal === 'false' ? false : null,
+      winning_amount: parseFloat(document.getElementById('m-winning').value) || null,
+      actual_cost:    parseFloat(document.getElementById('m-actual').value)  || null,
+      notes: document.getElementById('m-notes').value.trim() || null,
+    };
+
+    const res = await fetch(`${API_BASE}/api/upload/import`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ client_id: clientId, records: [record] })
+    });
+    const data = await res.json();
+    if (!res.ok) { alert('Failed: ' + (data.detail || 'unknown')); return; }
+    history.push({ client_id: clientId, count: 1, date: new Date().toLocaleDateString() });
+    localStorage.setItem('uploadHistory', JSON.stringify(history));
+    renderHistory();
+    toast('Bid added to profile "' + clientId + '"');
+    ['m-name','m-zip','m-bid','m-winning','m-actual','m-notes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('m-won').value = '';
+  });
 </script>
 </body>
 </html>

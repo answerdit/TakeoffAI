@@ -265,3 +265,20 @@ async def template_excel():
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="takeoffai_bid_template.xlsx"'},
     )
+
+
+# ── Confirm import to client profile ─────────────────────────────────────────
+
+class ImportRequest(BaseModel):
+    client_id: str = "default"
+    records: list[dict]
+
+
+@upload_router.post("/import")
+async def import_bids(req: ImportRequest):
+    """Persist parsed bid records into the client profile for tournament learning."""
+    from backend.agents.feedback_loop import update_client_profile_from_upload
+    if not req.records:
+        raise HTTPException(status_code=400, detail="No records provided.")
+    result = update_client_profile_from_upload(req.client_id, req.records)
+    return {"status": "imported", "client_id": req.client_id, **result}
