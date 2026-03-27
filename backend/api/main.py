@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import router
+from backend.api.upload import upload_router
 
 DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
 
@@ -62,6 +63,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api")
+app.include_router(upload_router, prefix="/api")
 
 
 @app.get("/api/health")

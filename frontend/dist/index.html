@@ -83,6 +83,16 @@
       text-transform: uppercase;
     }
 
+    .nav-link {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      letter-spacing: 0.01em;
+      transition: color 0.15s;
+    }
+
+    .nav-link:hover { color: var(--amber); }
+
     /* ── Layout ─────────────────────────────────────────────────── */
     main {
       max-width: 960px;
@@ -601,7 +611,10 @@
     <span class="logo-name">Takeoff<span>AI</span></span>
     <span class="logo-by">by answerd.it</span>
   </div>
-  <span class="header-badge">Beta</span>
+  <nav style="display:flex;align-items:center;gap:1.5rem;">
+    <a href="upload.html" class="nav-link">Import Bid History</a>
+    <span class="header-badge">Beta</span>
+  </nav>
 </header>
 
 <!-- ── Main ───────────────────────────────────────────────────────────── -->

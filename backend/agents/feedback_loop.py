@@ -118,6 +118,70 @@ def update_client_profile(client_id: str, winner_entry: dict) -> dict:
     return profile
 
 
+def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
+    """
+    Bulk-import historical bid records from a CSV, Excel, or manual upload.
+
+    Each bid dict must contain: project_name, zip_code, bid_date, your_bid_amount,
+    won (bool). Optional: description, location, trade_type, winning_bid_amount,
+    actual_cost, notes.
+
+    Only bids where won=True are added to winning_examples.
+    agent_elo is NOT modified (no agent produced these bids).
+    Returns the updated profile.
+    """
+    path = _profile_path(client_id)
+    profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
+
+    winning_bids = [b for b in bids if b.get("won")]
+
+    for bid in winning_bids:
+        project_name = bid.get("project_name", "")
+        description = bid.get("description", "")
+        summary = f"{project_name} — {description}".strip(" —") if description else project_name
+
+        example = {
+            "agent_name": "upload",
+            "total_bid": float(bid.get("your_bid_amount", 0)),
+            "estimate_snapshot": {
+                "project_summary": summary,
+                "location": bid.get("location", ""),
+                "trade_type": bid.get("trade_type", "general"),
+                "winning_bid_amount": bid.get("winning_bid_amount"),
+                "actual_cost": bid.get("actual_cost"),
+                "notes": bid.get("notes", ""),
+            },
+            "timestamp": bid.get("bid_date", datetime.utcnow().isoformat()),
+            "source": "upload",
+        }
+        profile["winning_examples"].append(example)
+
+    if len(profile["winning_examples"]) > MAX_WINNING_EXAMPLES:
+        profile["winning_examples"] = profile["winning_examples"][-MAX_WINNING_EXAMPLES:]
+
+    # Update upload-specific counters (separate from tournament stats)
+    upload_stats = profile.setdefault("upload_stats", {
+        "total_uploaded": 0,
+        "total_won_uploaded": 0,
+    })
+    upload_stats["total_uploaded"] = upload_stats.get("total_uploaded", 0) + len(bids)
+    upload_stats["total_won_uploaded"] = upload_stats.get("total_won_uploaded", 0) + len(winning_bids)
+
+    # Recalculate avg_winning_bid across all winning_examples (tournaments + uploads)
+    stats = profile.setdefault("stats", {
+        "total_tournaments": 0,
+        "win_rate_by_agent": {a: 0.0 for a in ALL_AGENTS},
+        "avg_winning_bid": 0.0,
+        "avg_winning_margin": 0.0,
+        "wins_by_agent": {a: 0 for a in ALL_AGENTS},
+    })
+    all_bids = [e["total_bid"] for e in profile["winning_examples"] if e.get("total_bid")]
+    stats["avg_winning_bid"] = round(sum(all_bids) / len(all_bids), 2) if all_bids else 0.0
+
+    path.write_text(json.dumps(profile, indent=2))
+    return profile
+
+
 def load_client_context(client_id: str) -> str:
     """
     Return a formatted string of the top 5 most-recent winning examples
