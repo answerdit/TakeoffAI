@@ -1,12 +1,52 @@
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+import aiosqlite
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import router
 
+DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
+
+_CREATE_TABLES = """
+CREATE TABLE IF NOT EXISTS bid_tournaments (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id           TEXT,
+    project_description TEXT NOT NULL,
+    zip_code            TEXT NOT NULL,
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status              TEXT NOT NULL DEFAULT 'pending'
+);
+
+CREATE TABLE IF NOT EXISTS tournament_entries (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_id   INTEGER NOT NULL REFERENCES bid_tournaments(id),
+    agent_name      TEXT NOT NULL,
+    total_bid       REAL,
+    line_items_json TEXT,
+    won             INTEGER NOT NULL DEFAULT 0,
+    score           REAL,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure data directory exists
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.executescript(_CREATE_TABLES)
+        await db.commit()
+    yield
+
+
 app = FastAPI(
     title="TakeoffAI",
     description="AI-powered construction pre-bid estimation and bid-winning strategy — by answerd.it",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 import os

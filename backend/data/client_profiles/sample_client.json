@@ -1,0 +1,156 @@
+{
+  "client_id": "sample_client",
+  "company": "West Texas Construction & Metal Buildings LLC",
+  "region": "West Texas (Abilene / San Angelo / Midland area)",
+  "created_at": "2025-09-01T00:00:00",
+  "winning_examples": [
+    {
+      "agent_name": "aggressive",
+      "total_bid": 287500.00,
+      "estimate_snapshot": {
+        "project_summary": "3,600 SF pre-engineered metal building — 40x90 clear span, 16' eave height, 26-gauge Galvalume roof, 3 overhead doors, 1 man door, no HVAC",
+        "location": "Midland, TX 79701",
+        "line_items": [
+          {"description": "Metal building package (materials + erection)", "quantity": 3600, "unit": "sqft", "subtotal": 198000},
+          {"description": "Concrete slab 5\" with vapor barrier and WWF", "quantity": 3600, "unit": "sqft", "subtotal": 43200},
+          {"description": "Site grading and caliche base", "quantity": 1, "unit": "LS", "subtotal": 12500},
+          {"description": "Electrical service entrance and panel", "quantity": 1, "unit": "LS", "subtotal": 18500},
+          {"description": "Overhead doors (14x14 insulated)", "quantity": 3, "unit": "EA", "subtotal": 11250}
+        ],
+        "subtotal": 283450,
+        "overhead_pct": 14,
+        "overhead_amount": 39683,
+        "margin_pct": 6,
+        "margin_amount": 19397,
+        "total_bid": 287500,
+        "confidence": "high",
+        "notes": "Competitive metal building market in Permian Basin — trimmed margin to win oil field services client"
+      },
+      "timestamp": "2025-09-15T10:30:00"
+    },
+    {
+      "agent_name": "balanced",
+      "total_bid": 142800.00,
+      "estimate_snapshot": {
+        "project_summary": "Commercial remodel — 2,400 SF auto shop conversion to retail, new storefront, drywall, paint, flooring, drop ceiling, HVAC split systems",
+        "location": "Abilene, TX 79601",
+        "line_items": [
+          {"description": "Storefront aluminum framing and glass", "quantity": 1, "unit": "LS", "subtotal": 22000},
+          {"description": "Interior drywall partition walls", "quantity": 1800, "unit": "sqft", "subtotal": 14400},
+          {"description": "Suspended ceiling system (2x4 grid)", "quantity": 2400, "unit": "sqft", "subtotal": 12000},
+          {"description": "LVP flooring with pad", "quantity": 2400, "unit": "sqft", "subtotal": 18000},
+          {"description": "Paint — walls, ceiling, trim", "quantity": 2400, "unit": "sqft", "subtotal": 9600},
+          {"description": "HVAC mini-split systems (2-ton x3)", "quantity": 3, "unit": "EA", "subtotal": 28500},
+          {"description": "Electrical — lighting, outlets, panel upgrade", "quantity": 1, "unit": "LS", "subtotal": 21000}
+        ],
+        "subtotal": 125500,
+        "overhead_pct": 18,
+        "overhead_amount": 22590,
+        "margin_pct": 12,
+        "margin_amount": 17770,
+        "total_bid": 142800,
+        "confidence": "high",
+        "notes": "Owner-occupied retail — balanced bid, mid-market finish level"
+      },
+      "timestamp": "2025-10-22T14:00:00"
+    },
+    {
+      "agent_name": "market_beater",
+      "total_bid": 68400.00,
+      "estimate_snapshot": {
+        "project_summary": "Parking lot — 12,000 SF concrete flatwork, 4\" base, broom finish, expansion joints every 10'",
+        "location": "San Angelo, TX 76901",
+        "line_items": [
+          {"description": "Subgrade preparation and compaction", "quantity": 12000, "unit": "sqft", "subtotal": 7200},
+          {"description": "4\" concrete flatwork with fiber reinforcement", "quantity": 12000, "unit": "sqft", "subtotal": 48000},
+          {"description": "Expansion joint sawcutting", "quantity": 1440, "unit": "LF", "subtotal": 4320},
+          {"description": "Concrete sealer", "quantity": 12000, "unit": "sqft", "subtotal": 2880}
+        ],
+        "subtotal": 62400,
+        "overhead_pct": 14,
+        "overhead_amount": 8736,
+        "margin_pct": 8,
+        "margin_amount": 5702,
+        "total_bid": 68400,
+        "confidence": "high",
+        "notes": "Concrete work is bread-and-butter — priced to beat 3 local competitors"
+      },
+      "timestamp": "2025-11-05T09:15:00"
+    },
+    {
+      "agent_name": "conservative",
+      "total_bid": 534000.00,
+      "estimate_snapshot": {
+        "project_summary": "6,000 SF tilt-wall commercial building — grain co-op storage facility, 24' eave, forklift doors, office build-out, full utilities",
+        "location": "Sweetwater, TX 79556",
+        "line_items": [
+          {"description": "Tilt-wall panel design, form and pour", "quantity": 6000, "unit": "sqft", "subtotal": 156000},
+          {"description": "Structural steel and erection", "quantity": 6000, "unit": "sqft", "subtotal": 54000},
+          {"description": "Roof — standing seam metal", "quantity": 6000, "unit": "sqft", "subtotal": 72000},
+          {"description": "Concrete slab on grade 6\"", "quantity": 6000, "unit": "sqft", "subtotal": 42000},
+          {"description": "1,200 SF office build-out (full finish)", "quantity": 1200, "unit": "sqft", "subtotal": 72000},
+          {"description": "Plumbing rough-in and fixtures", "quantity": 1, "unit": "LS", "subtotal": 31500},
+          {"description": "Electrical — service, lighting, outlets", "quantity": 1, "unit": "LS", "subtotal": 45000}
+        ],
+        "subtotal": 472500,
+        "overhead_pct": 20,
+        "overhead_amount": 94500,
+        "margin_pct": 14,
+        "margin_amount": 78750,
+        "total_bid": 534000,
+        "confidence": "medium",
+        "notes": "Tilt-wall for ag sector — conservative pricing justified by limited tilt subcontractor pool"
+      },
+      "timestamp": "2025-12-10T11:45:00"
+    },
+    {
+      "agent_name": "aggressive",
+      "total_bid": 44200.00,
+      "estimate_snapshot": {
+        "project_summary": "Caliche road — 1,200 LF x 20' wide access road to pump jack location, 8\" compacted caliche base, motor grader finish",
+        "location": "Andrews, TX 79714",
+        "line_items": [
+          {"description": "Clearing and grubbing", "quantity": 1, "unit": "LS", "subtotal": 4800},
+          {"description": "8\" caliche base (imported, spread, compact)", "quantity": 4000, "unit": "CY", "subtotal": 32000},
+          {"description": "Motor grader final grade and crown", "quantity": 1200, "unit": "LF", "subtotal": 3600},
+          {"description": "Mobilization", "quantity": 1, "unit": "LS", "subtotal": 3800}
+        ],
+        "subtotal": 44200,
+        "overhead_pct": 12,
+        "overhead_amount": 5304,
+        "margin_pct": 8,
+        "margin_amount": 3960,
+        "total_bid": 44200,
+        "confidence": "high",
+        "notes": "Oil field access road — extremely price-sensitive, repeat client relationship"
+      },
+      "timestamp": "2026-01-18T08:00:00"
+    }
+  ],
+  "agent_elo": {
+    "conservative": 1000,
+    "balanced": 1000,
+    "aggressive": 1000,
+    "historical_match": 1000,
+    "market_beater": 1000
+  },
+  "stats": {
+    "total_tournaments": 5,
+    "wins_by_agent": {
+      "conservative": 1,
+      "balanced": 1,
+      "aggressive": 2,
+      "historical_match": 0,
+      "market_beater": 1
+    },
+    "win_rate_by_agent": {
+      "conservative": 0.2,
+      "balanced": 0.2,
+      "aggressive": 0.4,
+      "historical_match": 0.0,
+      "market_beater": 0.2
+    },
+    "avg_winning_bid": 215380.00,
+    "avg_winning_margin": 9.6
+  }
+}

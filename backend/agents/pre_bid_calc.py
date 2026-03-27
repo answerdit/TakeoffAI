@@ -88,6 +88,17 @@ Always return valid JSON in this exact format — no markdown fences, no extra t
 
 # ── Agent entry point ─────────────────────────────────────────────────────────
 
+def _parse_response(raw: str) -> dict:
+    """Strip markdown fences and parse JSON from an LLM response."""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    return json.loads(raw)
+
+
 def run_prebid_calc(
     description: str,
     zip_code: str,
@@ -96,6 +107,26 @@ def run_prebid_calc(
     margin_pct: float = 12.0,
 ) -> dict:
     """Run the PreBidCalc agent and return a structured estimate."""
+    return run_prebid_calc_with_modifier(
+        description, zip_code, trade_type, overhead_pct, margin_pct, system_prompt_modifier=None
+    )
+
+
+def run_prebid_calc_with_modifier(
+    description: str,
+    zip_code: str,
+    trade_type: str = "general",
+    overhead_pct: float = 20.0,
+    margin_pct: float = 12.0,
+    system_prompt_modifier: str | None = None,
+) -> dict:
+    """
+    Run PreBidCalc with an optional personality modifier appended to the system prompt.
+    Used by the tournament engine to inject bidding-style instructions per agent.
+    """
+    system = SYSTEM_PROMPT
+    if system_prompt_modifier:
+        system = system + f"\n\n---\n\n{system_prompt_modifier}"
 
     user_message = f"""Project Description: {description}
 Zip Code: {zip_code}
@@ -108,15 +139,8 @@ Please generate a detailed line-item cost estimate for this project."""
     response = client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=4096,
-        system=SYSTEM_PROMPT,
+        system=system,
         messages=[{"role": "user", "content": user_message}],
     )
 
-    raw = response.content[0].text.strip()
-    # Strip markdown fences if the model wraps output anyway
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-    return json.loads(raw)
+    return _parse_response(response.content[0].text)

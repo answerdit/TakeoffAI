@@ -3,12 +3,21 @@ TakeoffAI — API route definitions.
 Thin HTTP layer; delegates all logic to agent modules.
 """
 
+import json
+from pathlib import Path
+from typing import Optional
+
+import aiosqlite
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.agents.pre_bid_calc import run_prebid_calc
 from backend.agents.bid_to_win import run_bid_to_win
+from backend.agents.tournament import run_tournament
+from backend.agents.judge import judge_tournament
 from backend.config import settings
+
+DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
 
 router = APIRouter()
 
@@ -65,5 +74,119 @@ async def bid_strategy(req: BidStrategyRequest):
             known_competitors=req.known_competitors,
         )
         return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ── Tournament endpoints ──────────────────────────────────────────────────────
+
+class TournamentRunRequest(BaseModel):
+    description: str = Field(..., min_length=10, description="Plain-English project description")
+    zip_code: str = Field(..., min_length=5, max_length=10, description="Project zip code")
+    trade_type: str = Field(default="general", description="Primary trade type")
+    overhead_pct: float = Field(default=None, ge=0, le=100, description="Overhead %")
+    margin_pct: float = Field(default=None, ge=0, le=100, description="Target margin %")
+    client_id: Optional[str] = Field(default=None, description="Client ID for profile-aware bidding")
+    n_agents: int = Field(default=5, ge=1, le=5, description="Number of agent personalities to run")
+
+    def resolved_overhead(self) -> float:
+        return self.overhead_pct if self.overhead_pct is not None else settings.default_overhead_pct
+
+    def resolved_margin(self) -> float:
+        return self.margin_pct if self.margin_pct is not None else settings.default_margin_pct
+
+
+class TournamentJudgeRequest(BaseModel):
+    tournament_id: int = Field(..., description="ID of the tournament to judge")
+    winner_agent_name: Optional[str] = Field(default=None, description="HUMAN mode: name the winning agent")
+    actual_winning_bid: Optional[float] = Field(default=None, ge=0, description="HISTORICAL mode: actual market-winning bid amount")
+    human_notes: Optional[str] = Field(default=None, description="Optional free-text notes")
+
+
+@router.post("/tournament/run")
+async def tournament_run(req: TournamentRunRequest):
+    """Run a bid tournament — N agents estimate the same project in parallel."""
+    try:
+        result = await run_tournament(
+            description=req.description,
+            zip_code=req.zip_code,
+            trade_type=req.trade_type,
+            overhead_pct=req.resolved_overhead(),
+            margin_pct=req.resolved_margin(),
+            client_id=req.client_id,
+            n_agents=req.n_agents,
+        )
+        return {
+            "tournament_id": result.tournament_id,
+            "entries": [
+                {
+                    "agent_name": e.agent_name,
+                    "total_bid": e.total_bid,
+                    "margin_pct": e.margin_pct,
+                    "confidence": e.confidence,
+                    "estimate": e.estimate,
+                    "error": e.error,
+                }
+                for e in result.entries
+            ],
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/tournament/judge")
+async def tournament_judge(req: TournamentJudgeRequest):
+    """Judge a tournament — determine the winner and trigger feedback loop."""
+    try:
+        result = await judge_tournament(
+            tournament_id=req.tournament_id,
+            winner_agent_name=req.winner_agent_name,
+            actual_winning_bid=req.actual_winning_bid,
+            human_notes=req.human_notes,
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/tournament/{tournament_id}")
+async def tournament_get(tournament_id: int):
+    """Retrieve a tournament and all its agent entries."""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM bid_tournaments WHERE id = ?", (tournament_id,)
+            ) as cur:
+                row = await cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail=f"Tournament {tournament_id} not found")
+            tournament = dict(row)
+
+            async with db.execute(
+                "SELECT id, agent_name, total_bid, won, score, created_at FROM tournament_entries WHERE tournament_id = ?",
+                (tournament_id,),
+            ) as cur:
+                entries = [dict(r) for r in await cur.fetchall()]
+
+        return {"tournament": tournament, "entries": entries}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/client/{client_id}/profile")
+async def client_profile(client_id: str):
+    """Return client profile including ELO scores and win statistics."""
+    try:
+        profile_path = Path(__file__).parent.parent / "data" / "client_profiles" / f"{client_id}.json"
+        if not profile_path.exists():
+            raise HTTPException(status_code=404, detail=f"Client profile '{client_id}' not found")
+        return json.loads(profile_path.read_text())
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
