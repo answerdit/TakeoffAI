@@ -6,6 +6,7 @@ Tracks client bid history, agent ELO scores, and win statistics.
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 PROFILES_DIR = Path(__file__).parent.parent / "data" / "client_profiles"
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
@@ -220,3 +221,159 @@ def load_client_context(client_id: str) -> str:
             lines.append(f"- {agent}: {score}")
 
     return "\n".join(lines)
+
+
+# ── Calibration & Accuracy (appended — no existing functions modified) ────────
+
+DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
+
+RED_FLAG_DEVIATION_THRESHOLD = 5.0   # % average deviation to red-flag an agent
+RED_FLAG_LOOKBACK = 5                # number of most recent jobs to consider
+
+
+def _compute_brier_score(
+    predictions: list[float],
+    actuals: list[int],
+) -> Optional[float]:
+    """
+    Brier Score = (1/N) * sum((f_i - o_i)^2)
+    f_i: predicted win probability (0–1)
+    o_i: actual outcome (1=won, 0=lost)
+    Lower is better; < 0.25 = well-calibrated.
+    Returns None if no data.
+    """
+    if not predictions or len(predictions) != len(actuals):
+        return None
+    n = len(predictions)
+    return round(sum((p - a) ** 2 for p, a in zip(predictions, actuals)) / n, 4)
+
+
+def record_actual_outcome(
+    client_id: str,
+    tournament_id: int,
+    actual_cost: float,
+    won: bool,
+    win_probability: Optional[float] = None,
+) -> dict:
+    """
+    Record actual job outcome and update calibration data.
+
+    - Loads all agent entries for tournament_id from SQLite
+    - Computes per-agent deviation: (agent_bid - actual_cost) / actual_cost * 100
+    - Appends to calibration.agent_deviation_history (keeps last 5 per agent)
+    - Red-flags agents whose last 5 deviations average > RED_FLAG_DEVIATION_THRESHOLD
+    - Appends win_probability prediction + actual outcome; recomputes Brier score
+    - Writes updated profile to disk; returns updated profile dict
+    """
+    import asyncio
+    import aiosqlite
+
+    async def _load_entries():
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT agent_name, total_bid FROM tournament_entries WHERE tournament_id = ?",
+                (tournament_id,),
+            ) as cur:
+                return [dict(r) for r in await cur.fetchall()]
+
+    entries = asyncio.run(_load_entries())
+
+    if not entries:
+        raise ValueError(f"No entries found for tournament {tournament_id}")
+
+    path = _profile_path(client_id)
+    profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
+
+    # Initialise calibration block if absent
+    cal = profile.setdefault("calibration", {
+        "win_prob_predictions": [],
+        "win_prob_actuals": [],
+        "brier_score": None,
+        "confidence_accuracy": {},
+        "agent_deviation_history": {agent: [] for agent in ALL_AGENTS},
+        "red_flagged_agents": [],
+    })
+    cal.setdefault("agent_deviation_history", {agent: [] for agent in ALL_AGENTS})
+    cal.setdefault("red_flagged_agents", [])
+
+    # Compute per-agent deviation
+    for entry in entries:
+        agent = entry["agent_name"]
+        bid = float(entry.get("total_bid") or 0.0)
+        if actual_cost > 0 and bid > 0:
+            dev = round((bid - actual_cost) / actual_cost * 100, 4)
+        else:
+            dev = 0.0
+        history = cal["agent_deviation_history"].setdefault(agent, [])
+        history.append(dev)
+        # Keep only last RED_FLAG_LOOKBACK entries
+        cal["agent_deviation_history"][agent] = history[-RED_FLAG_LOOKBACK:]
+
+    # Red-flag agents
+    red_flagged = set(cal.get("red_flagged_agents", []))
+    for agent in ALL_AGENTS:
+        history = cal["agent_deviation_history"].get(agent, [])
+        if len(history) >= RED_FLAG_LOOKBACK:
+            avg_dev = sum(abs(d) for d in history) / len(history)
+            if avg_dev > RED_FLAG_DEVIATION_THRESHOLD:
+                red_flagged.add(agent)
+            else:
+                red_flagged.discard(agent)
+    cal["red_flagged_agents"] = sorted(red_flagged)
+
+    # Win probability calibration
+    if win_probability is not None:
+        cal["win_prob_predictions"].append(float(win_probability))
+        cal["win_prob_actuals"].append(1 if won else 0)
+    cal["brier_score"] = _compute_brier_score(
+        cal["win_prob_predictions"],
+        cal["win_prob_actuals"],
+    )
+
+    path.write_text(json.dumps(profile, indent=2))
+    return profile
+
+
+def get_agent_accuracy_report(client_id: str) -> dict:
+    """
+    Return per-agent accuracy statistics and calibration data for a client.
+
+    Returns dict with:
+    - Per-agent: avg_deviation_pct (last 5 jobs), red_flagged bool, deviation_history
+    - brier_score: overall win probability calibration score
+    - recommended_agent: agent with lowest avg deviation (not red-flagged)
+    """
+    path = _profile_path(client_id)
+    if not path.exists():
+        raise ValueError(f"Client profile '{client_id}' not found")
+
+    profile = json.loads(path.read_text())
+    cal = profile.get("calibration", {})
+    deviation_history = cal.get("agent_deviation_history", {})
+    red_flagged = set(cal.get("red_flagged_agents", []))
+
+    report: dict = {}
+    for agent in ALL_AGENTS:
+        history = deviation_history.get(agent, [])
+        recent = history[-RED_FLAG_LOOKBACK:] if history else []
+        avg_dev = round(sum(abs(d) for d in recent) / len(recent), 4) if recent else None
+        report[agent] = {
+            "avg_deviation_pct": avg_dev,
+            "deviation_history": recent,
+            "red_flagged": agent in red_flagged,
+        }
+
+    # Recommended: lowest avg deviation, not red-flagged
+    ranked = [
+        (a, report[a]["avg_deviation_pct"])
+        for a in ALL_AGENTS
+        if report[a]["avg_deviation_pct"] is not None
+        and not report[a]["red_flagged"]
+    ]
+    ranked.sort(key=lambda x: x[1])
+    report["recommended_agent"] = ranked[0][0] if ranked else None
+    report["brier_score"] = cal.get("brier_score")
+    report["win_prob_predictions_count"] = len(cal.get("win_prob_predictions", []))
+
+    return report
