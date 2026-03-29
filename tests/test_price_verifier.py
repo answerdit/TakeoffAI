@@ -128,3 +128,120 @@ def test_update_seed_csv(tmp_path):
     # Other rows unchanged
     concrete = next(r for r in rows if r["item"] == "Concrete (3000 PSI)")
     assert float(concrete["low_cost"]) == pytest.approx(135.00)
+
+
+@pytest.mark.asyncio
+async def test_verify_line_items_writes_audit_record(tmp_path):
+    """verify_line_items writes one audit record per line item to price_audit."""
+    import aiosqlite
+
+    db_path = str(tmp_path / "test.db")
+    from backend.api.main import _CREATE_TABLES
+    async with aiosqlite.connect(db_path) as db:
+        await db.executescript(_CREATE_TABLES)
+        await db.commit()
+
+    line_items = [{
+        "description": "Framing Lumber (2x4x8)",
+        "unit": "LF",
+        "unit_material_cost": 0.60,
+        "unit_labor_cost": 0.20,
+        "quantity": 1000,
+        "subtotal": 800.0,
+    }]
+
+    with patch("backend.agents.price_verifier.DB_PATH", db_path):
+        with patch("backend.agents.price_verifier._fetch_supplier_price", AsyncMock(return_value=0.65)):
+            with patch("backend.agents.price_verifier._web_search_price", AsyncMock(return_value=[])):
+                from backend.agents.price_verifier import verify_line_items
+                records = await verify_line_items(line_items, triggered_by="on_demand")
+
+    assert len(records) == 1
+    assert records[0]["line_item"] == "Framing Lumber (2x4x8)"
+    assert records[0]["ai_unit_cost"] == pytest.approx(0.60)
+
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT COUNT(*) FROM price_audit") as cur:
+            count = (await cur.fetchone())[0]
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_verify_line_items_flags_deviation_over_5_pct(tmp_path):
+    """Items with >5% deviation are flagged and inserted into review_queue."""
+    import aiosqlite
+
+    db_path = str(tmp_path / "test.db")
+    from backend.api.main import _CREATE_TABLES
+    async with aiosqlite.connect(db_path) as db:
+        await db.executescript(_CREATE_TABLES)
+        await db.commit()
+
+    # AI said $0.60, web says $1.00 → deviation = -40% → flagged
+    line_items = [{
+        "description": "Framing Lumber (2x4x8)",
+        "unit": "LF",
+        "unit_material_cost": 0.60,
+        "unit_labor_cost": 0.20,
+        "quantity": 1000,
+        "subtotal": 800.0,
+    }]
+
+    with patch("backend.agents.price_verifier.DB_PATH", db_path):
+        with patch("backend.agents.price_verifier._fetch_supplier_price",
+                   AsyncMock(side_effect=[1.00, 1.02])):  # 2 supplier hits
+            with patch("backend.agents.price_verifier._web_search_price",
+                       AsyncMock(return_value=[0.99])):  # 1 web hit → 3 total, agree
+                from backend.agents.price_verifier import verify_line_items
+                records = await verify_line_items(line_items, triggered_by="on_demand")
+
+    assert records[0]["flagged"] == 1
+
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT COUNT(*) FROM review_queue WHERE status='pending'") as cur:
+            count = (await cur.fetchone())[0]
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_verify_line_items_auto_updates_csv_with_3_agreeing_sources(tmp_path):
+    """3+ agreeing sources → auto_updated=1 and CSV is rewritten."""
+    import aiosqlite
+    import csv
+
+    db_path = str(tmp_path / "test.db")
+    csv_path = tmp_path / "material_costs.csv"
+    csv_path.write_text(
+        "item,unit,low_cost,high_cost,trade_category\n"
+        "Framing Lumber (2x4x8),LF,0.45,0.75,Framing\n"
+    )
+
+    from backend.api.main import _CREATE_TABLES
+    async with aiosqlite.connect(db_path) as db:
+        await db.executescript(_CREATE_TABLES)
+        await db.commit()
+
+    line_items = [{
+        "description": "Framing Lumber (2x4x8)",
+        "unit": "LF",
+        "unit_material_cost": 0.60,
+        "unit_labor_cost": 0.20,
+        "quantity": 1000,
+        "subtotal": 800.0,
+    }]
+
+    with patch("backend.agents.price_verifier.DB_PATH", db_path):
+        with patch("backend.agents.price_verifier.CSV_PATH", csv_path):
+            with patch("backend.agents.price_verifier._fetch_supplier_price",
+                       AsyncMock(side_effect=[1.00, 1.02])):
+                with patch("backend.agents.price_verifier._web_search_price",
+                           AsyncMock(return_value=[0.98])):
+                    from backend.agents.price_verifier import verify_line_items
+                    records = await verify_line_items(line_items, triggered_by="nightly")
+
+    assert records[0]["auto_updated"] == 1
+    rows = list(csv.DictReader(csv_path.open()))
+    lumber = next(r for r in rows if r["item"] == "Framing Lumber (2x4x8)")
+    # low_cost = min of verified prices, high_cost = max
+    assert float(lumber["low_cost"]) == pytest.approx(0.98)
+    assert float(lumber["high_cost"]) == pytest.approx(1.02)

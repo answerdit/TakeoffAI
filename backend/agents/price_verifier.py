@@ -205,3 +205,159 @@ def _update_seed_csv(
 
     tmp_path.replace(csv_path)
     return True
+
+
+async def _write_audit_record(
+    db_path: str,
+    triggered_by: str,
+    tournament_id: Optional[int],
+    line_item: str,
+    unit: str,
+    ai_unit_cost: float,
+    all_prices: list[float],
+    sources_meta: list[dict],
+) -> dict:
+    """Write one row to price_audit and optionally to review_queue. Returns audit dict."""
+    import aiosqlite
+
+    source_count = len(all_prices)
+    verified_low = min(all_prices) if all_prices else None
+    verified_high = max(all_prices) if all_prices else None
+    verified_mid = round(sum(all_prices) / len(all_prices), 4) if all_prices else None
+    deviation_pct = _compute_deviation(ai_unit_cost, verified_mid) if verified_mid else None
+    flagged = 1 if (deviation_pct is not None and abs(deviation_pct) > DEVIATION_THRESHOLD_PCT) else 0
+    sources_json = json.dumps(sources_meta)
+
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            """
+            INSERT INTO price_audit
+              (triggered_by, tournament_id, line_item, unit, ai_unit_cost,
+               verified_low, verified_high, verified_mid, deviation_pct,
+               sources, source_count, flagged)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (triggered_by, tournament_id, line_item, unit, ai_unit_cost,
+             verified_low, verified_high, verified_mid, deviation_pct,
+             sources_json, source_count, flagged),
+        ) as cur:
+            audit_id = cur.lastrowid
+        await db.commit()
+
+        if flagged:
+            await db.execute(
+                """
+                INSERT INTO review_queue
+                  (audit_id, line_item, unit, ai_unit_cost, verified_mid,
+                   deviation_pct, sources)
+                VALUES (?,?,?,?,?,?,?)
+                """,
+                (audit_id, line_item, unit, ai_unit_cost, verified_mid,
+                 deviation_pct, sources_json),
+            )
+            await db.commit()
+
+    return {
+        "audit_id": audit_id,
+        "line_item": line_item,
+        "unit": unit,
+        "ai_unit_cost": ai_unit_cost,
+        "verified_low": verified_low,
+        "verified_high": verified_high,
+        "verified_mid": verified_mid,
+        "deviation_pct": deviation_pct,
+        "source_count": source_count,
+        "flagged": flagged,
+        "auto_updated": 0,
+    }
+
+
+async def verify_line_items(
+    line_items: list[dict],
+    triggered_by: str,
+    tournament_id: Optional[int] = None,
+) -> list[dict]:
+    """
+    Verify unit prices for a list of estimate line items against web sources.
+
+    For each item:
+    1. Try Home Depot + Lowe's supplier lookup (Phase 1)
+    2. If < 2 results, add DuckDuckGo web search prices (Phase 2)
+    3. If 3+ agreeing sources (within 10%): auto-update material_costs.csv
+    4. Write audit record; flag + queue if deviation > 5%
+
+    Returns list of audit record dicts.
+    """
+    records = []
+
+    for item in line_items:
+        description = item.get("description", "")
+        unit = item.get("unit", "EA")
+        ai_unit_cost = float(item.get("unit_material_cost", 0.0))
+
+        if not description or ai_unit_cost == 0:
+            continue
+
+        all_prices: list[float] = []
+        sources_meta: list[dict] = []
+        retrieved_at = datetime.now(timezone.utc).isoformat()
+
+        # Phase 1: Supplier sites
+        for supplier in ("homedepot", "lowes"):
+            price = await _fetch_supplier_price(description, unit, supplier)
+            if price is not None:
+                all_prices.append(price)
+                sources_meta.append({
+                    "source": supplier,
+                    "price": price,
+                    "retrieved_at": retrieved_at,
+                })
+
+        # Phase 2: Web search fallback if < MIN_SOURCES_FOR_AUTO_UPDATE results
+        if len(all_prices) < MIN_SOURCES_FOR_AUTO_UPDATE:
+            web_prices = await _web_search_price(description, unit)
+            for p in web_prices[:3]:  # cap at 3 web results
+                all_prices.append(p)
+                sources_meta.append({
+                    "source": "web_search",
+                    "price": p,
+                    "retrieved_at": retrieved_at,
+                })
+
+        # Phase 3: Confidence decision
+        auto_updated = 0
+        if len(all_prices) >= MIN_SOURCES_FOR_AUTO_UPDATE and _sources_agree(all_prices):
+            updated = _update_seed_csv(
+                item=description,
+                new_low=min(all_prices),
+                new_high=max(all_prices),
+                csv_path=CSV_PATH,
+            )
+            if updated:
+                auto_updated = 1
+
+        record = await _write_audit_record(
+            db_path=DB_PATH,
+            triggered_by=triggered_by,
+            tournament_id=tournament_id,
+            line_item=description,
+            unit=unit,
+            ai_unit_cost=ai_unit_cost,
+            all_prices=all_prices,
+            sources_meta=sources_meta,
+        )
+        record["auto_updated"] = auto_updated
+
+        # Persist auto_updated flag to DB
+        if auto_updated:
+            import aiosqlite
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute(
+                    "UPDATE price_audit SET auto_updated = 1 WHERE id = ?",
+                    (record["audit_id"],),
+                )
+                await db.commit()
+
+        records.append(record)
+
+    return records
