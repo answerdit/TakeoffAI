@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import router
 from backend.api.upload import upload_router
+from backend.api.verification import verification_router
+from backend.scheduler import start_scheduler, stop_scheduler
 
 DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
 
@@ -73,7 +75,9 @@ async def lifespan(app: FastAPI):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_CREATE_TABLES)
         await db.commit()
+    start_scheduler()
     yield
+    stop_scheduler()
 
 
 app = FastAPI(
@@ -97,6 +101,7 @@ app.add_middleware(
 
 app.include_router(router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
+app.include_router(verification_router, prefix="/api")
 
 
 @app.get("/api/health")
