@@ -313,8 +313,8 @@ async def verify_line_items(
                     "retrieved_at": retrieved_at,
                 })
 
-        # Phase 2: Web search fallback if < MIN_SOURCES_FOR_AUTO_UPDATE results
-        if len(all_prices) < MIN_SOURCES_FOR_AUTO_UPDATE:
+        # Phase 2: Web search fallback if < 2 results from supplier lookup
+        if len(all_prices) < 2:
             web_prices = await _web_search_price(description, unit)
             for p in web_prices[:3]:  # cap at 3 web results
                 all_prices.append(p)

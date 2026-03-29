@@ -205,7 +205,8 @@ async def test_verify_line_items_flags_deviation_over_5_pct(tmp_path):
 
 @pytest.mark.asyncio
 async def test_verify_line_items_auto_updates_csv_with_3_agreeing_sources(tmp_path):
-    """3+ agreeing sources → auto_updated=1 and CSV is rewritten."""
+    """Phase 1 gets 1 supplier hit; Phase 2 fires (< 2 trigger) and adds web search;
+    total 3 agreeing sources → auto_updated=1 and CSV is rewritten."""
     import aiosqlite
     import csv
 
@@ -233,9 +234,9 @@ async def test_verify_line_items_auto_updates_csv_with_3_agreeing_sources(tmp_pa
     with patch("backend.agents.price_verifier.DB_PATH", db_path):
         with patch("backend.agents.price_verifier.CSV_PATH", csv_path):
             with patch("backend.agents.price_verifier._fetch_supplier_price",
-                       AsyncMock(side_effect=[1.00, 1.02])):
+                       AsyncMock(side_effect=[1.00, None])):
                 with patch("backend.agents.price_verifier._web_search_price",
-                           AsyncMock(return_value=[0.98])):
+                           AsyncMock(return_value=[0.98, 1.02])):
                     from backend.agents.price_verifier import verify_line_items
                     records = await verify_line_items(line_items, triggered_by="nightly")
 
