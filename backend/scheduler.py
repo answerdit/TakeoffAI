@@ -30,7 +30,8 @@ async def _run_nightly_verification() -> None:
         logger.warning("material_costs.csv not found; skipping nightly verification")
         return
 
-    rows = list(csv.DictReader(CSV_PATH.open(newline="", encoding="utf-8")))
+    with CSV_PATH.open(newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
     if not rows:
         logger.info("material_costs.csv is empty; nothing to verify")
         return

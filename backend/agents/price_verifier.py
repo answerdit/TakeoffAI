@@ -180,7 +180,8 @@ def _update_seed_csv(
     if not csv_path.exists():
         return False
 
-    rows = list(csv.DictReader(csv_path.open(newline="", encoding="utf-8")))
+    with csv_path.open(newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
     fieldnames = list(rows[0].keys()) if rows else ["item", "unit", "low_cost", "high_cost", "trade_category"]
 
     updated = False
