@@ -30,6 +30,39 @@ CREATE TABLE IF NOT EXISTS tournament_entries (
     score           REAL,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS price_audit (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    triggered_by    TEXT NOT NULL,
+    tournament_id   INTEGER,
+    line_item       TEXT NOT NULL,
+    unit            TEXT NOT NULL,
+    ai_unit_cost    REAL NOT NULL,
+    verified_low    REAL,
+    verified_high   REAL,
+    verified_mid    REAL,
+    deviation_pct   REAL,
+    sources         TEXT,
+    source_count    INTEGER DEFAULT 0,
+    flagged         INTEGER DEFAULT 0,
+    auto_updated    INTEGER DEFAULT 0,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS review_queue (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    audit_id        INTEGER NOT NULL REFERENCES price_audit(id),
+    line_item       TEXT NOT NULL,
+    unit            TEXT NOT NULL,
+    ai_unit_cost    REAL NOT NULL,
+    verified_mid    REAL NOT NULL,
+    deviation_pct   REAL NOT NULL,
+    sources         TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    reviewer_notes  TEXT,
+    resolved_at     DATETIME,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
