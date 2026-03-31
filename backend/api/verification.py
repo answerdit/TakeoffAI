@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.agents.feedback_loop import get_agent_accuracy_report, record_actual_outcome
-from backend.agents.price_verifier import verify_line_items
+from backend.agents.price_verifier import verify_line_items, _update_seed_csv
 from backend.scheduler import run_verification_batch
 
 DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
@@ -39,6 +39,7 @@ class OutcomeRequest(BaseModel):
 class QueueResolveRequest(BaseModel):
     status: Literal["approved", "rejected"]
     reviewer_notes: Optional[str] = None
+    custom_price: Optional[float] = None
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -126,15 +127,28 @@ async def list_queue(status: Optional[str] = "pending", limit: int = 100):
 
 @verification_router.patch("/verify/queue/{queue_id}")
 async def resolve_queue_item(queue_id: int, req: QueueResolveRequest):
-    """Approve or reject a flagged price deviation."""
+    """Approve or reject a flagged price deviation. Approval updates material_costs.csv."""
     try:
         resolved_at = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+
+            # Load queue item joined with audit for verified prices
             async with db.execute(
-                "SELECT id FROM review_queue WHERE id = ?", (queue_id,)
+                """
+                SELECT rq.*, pa.verified_low, pa.verified_high
+                FROM review_queue rq
+                LEFT JOIN price_audit pa ON rq.audit_id = pa.id
+                WHERE rq.id = ?
+                """,
+                (queue_id,),
             ) as cur:
-                if not await cur.fetchone():
-                    raise HTTPException(status_code=404, detail=f"Queue item {queue_id} not found")
+                full_row = await cur.fetchone()
+
+            if not full_row:
+                raise HTTPException(status_code=404, detail=f"Queue item {queue_id} not found")
+
+            full_row = dict(full_row)
 
             await db.execute(
                 "UPDATE review_queue SET status = ?, reviewer_notes = ?, resolved_at = ? WHERE id = ?",
@@ -142,11 +156,27 @@ async def resolve_queue_item(queue_id: int, req: QueueResolveRequest):
             )
             await db.commit()
 
-            db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT * FROM review_queue WHERE id = ?", (queue_id,)
             ) as cur:
                 row = dict(await cur.fetchone())
+
+        # Update seed CSV if approved
+        if req.status == "approved":
+            if req.custom_price is not None:
+                new_low = round(req.custom_price * 0.95, 4)
+                new_high = round(req.custom_price * 1.05, 4)
+            else:
+                new_low = full_row.get("verified_low")
+                new_high = full_row.get("verified_high")
+
+            if new_low and new_high:
+                _update_seed_csv(
+                    item=full_row["line_item"],
+                    new_low=new_low,
+                    new_high=new_high,
+                )
+
         return row
     except HTTPException:
         raise
