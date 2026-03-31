@@ -181,8 +181,19 @@ async def run_tournament(
         except Exception:
             pass
 
+    # Load excluded agents for this client
+    excluded_agents: list[str] = []
+    if client_id:
+        from backend.agents.feedback_loop import _profile_path
+        _prof_path = _profile_path(client_id)
+        if _prof_path.exists():
+            import json as _json
+            _prof = _json.loads(_prof_path.read_text())
+            excluded_agents = _prof.get("excluded_agents", [])
+
+    agents_to_run = [name for name in personalities if name not in excluded_agents]
     tasks = []
-    for name in personalities:
+    for name in agents_to_run:
         modifier = PERSONALITY_PROMPTS[name]
         if name == "historical_match" and client_context:
             modifier = modifier + f"\n\n{client_context}"

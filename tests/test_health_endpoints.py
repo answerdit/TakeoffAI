@@ -230,3 +230,63 @@ def test_reset_agent_history_clears_deviation(tmp_path, monkeypatch):
     updated = json.loads((tmp_path / "client2.json").read_text())
     assert updated["calibration"]["agent_deviation_history"]["aggressive"] == []
     assert "aggressive" not in updated["calibration"]["red_flagged_agents"]
+
+
+def test_excluded_agents_skipped_in_tournament(tmp_path, monkeypatch):
+    """run_tournament skips agents listed in client_profile.excluded_agents."""
+    import json
+    import backend.agents.feedback_loop as fl
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+
+    profile = {
+        "client_id": "client3",
+        "created_at": "2026-01-01T00:00:00",
+        "winning_examples": [],
+        "agent_elo": {a: 1000 for a in fl.ALL_AGENTS},
+        "stats": {"total_tournaments": 0, "win_rate_by_agent": {}, "avg_winning_bid": 0.0,
+                  "avg_winning_margin": 0.0, "wins_by_agent": {}},
+        "excluded_agents": ["aggressive"],
+    }
+    (tmp_path / "client3.json").write_text(json.dumps(profile))
+
+    import aiosqlite
+    db_path = str(tmp_path / "test_tourn.db")
+    from backend.api.main import _CREATE_TABLES
+    import backend.agents.tournament as tourn_mod
+    monkeypatch.setattr(tourn_mod, "DB_PATH", db_path)
+
+    async def setup_and_run():
+        async with aiosqlite.connect(db_path) as db:
+            await db.executescript(_CREATE_TABLES)
+            await db.commit()
+
+        agents_run = []
+
+        async def fake_run_single(agent_name, *args, **kwargs):
+            agents_run.append(agent_name)
+            from backend.agents.tournament import AgentResult
+            return AgentResult(
+                agent_name=agent_name,
+                estimate={"total_bid": 100000, "line_items": [], "margin_pct": 12},
+                total_bid=100000,
+                margin_pct=12,
+                confidence="medium",
+            )
+
+        with patch("backend.agents.tournament._run_single_agent", new=fake_run_single):
+            from backend.agents.tournament import run_tournament
+            await run_tournament(
+                description="40x60 metal building Brownwood TX",
+                zip_code="76801",
+                trade_type="general",
+                overhead_pct=20.0,
+                margin_pct=12.0,
+                client_id="client3",
+                n_agents=5,
+            )
+
+        return agents_run
+
+    agents_run = asyncio.run(setup_and_run())
+    assert "aggressive" not in agents_run
+    assert "balanced" in agents_run
