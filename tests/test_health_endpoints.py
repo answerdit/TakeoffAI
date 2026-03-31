@@ -165,3 +165,68 @@ def test_patch_queue_rejected_no_csv_update(tmp_path):
 
     assert resp.status_code == 200
     mock_csv.assert_not_called()
+
+
+def test_exclude_agent_adds_to_profile(tmp_path, monkeypatch):
+    """POST /api/client/{id}/exclude-agent adds agent to excluded_agents list."""
+    import backend.agents.feedback_loop as fl
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+
+    import json
+    profile = {
+        "client_id": "client1",
+        "created_at": "2026-01-01T00:00:00",
+        "winning_examples": [],
+        "agent_elo": {a: 1000 for a in fl.ALL_AGENTS},
+        "stats": {"total_tournaments": 0, "win_rate_by_agent": {}, "avg_winning_bid": 0.0,
+                  "avg_winning_margin": 0.0, "wins_by_agent": {}},
+    }
+    (tmp_path / "client1.json").write_text(json.dumps(profile))
+
+    from fastapi import FastAPI
+    from backend.api.routes import router
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+
+    with TestClient(app) as c:
+        resp = c.post("/api/client/client1/exclude-agent", json={"agent_name": "aggressive"})
+
+    assert resp.status_code == 200
+    updated = json.loads((tmp_path / "client1.json").read_text())
+    assert "aggressive" in updated.get("excluded_agents", [])
+
+
+def test_reset_agent_history_clears_deviation(tmp_path, monkeypatch):
+    """DELETE /api/client/{id}/agent-history/{agent} clears history and removes red flag."""
+    import backend.agents.feedback_loop as fl
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+
+    import json
+    profile = {
+        "client_id": "client2",
+        "created_at": "2026-01-01T00:00:00",
+        "winning_examples": [],
+        "agent_elo": {a: 1000 for a in fl.ALL_AGENTS},
+        "stats": {"total_tournaments": 0, "win_rate_by_agent": {}, "avg_winning_bid": 0.0,
+                  "avg_winning_margin": 0.0, "wins_by_agent": {}},
+        "calibration": {
+            "agent_deviation_history": {"aggressive": [8.0, 7.5, 9.0, 6.5, 8.2]},
+            "red_flagged_agents": ["aggressive"],
+            "win_prob_predictions": [], "win_prob_actuals": [], "brier_score": None,
+            "confidence_accuracy": {},
+        },
+    }
+    (tmp_path / "client2.json").write_text(json.dumps(profile))
+
+    from fastapi import FastAPI
+    from backend.api.routes import router
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+
+    with TestClient(app) as c:
+        resp = c.delete("/api/client/client2/agent-history/aggressive")
+
+    assert resp.status_code == 200
+    updated = json.loads((tmp_path / "client2.json").read_text())
+    assert updated["calibration"]["agent_deviation_history"]["aggressive"] == []
+    assert "aggressive" not in updated["calibration"]["red_flagged_agents"]

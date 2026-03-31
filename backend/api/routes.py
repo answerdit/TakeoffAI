@@ -3,6 +3,7 @@ TakeoffAI — API route definitions.
 Thin HTTP layer; delegates all logic to agent modules.
 """
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Optional
@@ -11,6 +12,7 @@ import aiosqlite
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from backend.agents.feedback_loop import exclude_agent as _exclude_agent, reset_agent_history as _reset_agent_history
 from backend.agents.pre_bid_calc import run_prebid_calc
 from backend.agents.bid_to_win import run_bid_to_win
 from backend.agents.tournament import run_tournament
@@ -188,5 +190,29 @@ async def client_profile(client_id: str):
         return json.loads(profile_path.read_text())
     except HTTPException:
         raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+class ExcludeAgentRequest(BaseModel):
+    agent_name: str = Field(..., description="Agent personality to exclude from tournaments")
+
+
+@router.post("/client/{client_id}/exclude-agent")
+async def exclude_agent_endpoint(client_id: str, req: ExcludeAgentRequest):
+    """Add an agent to the client's excluded list — it will be skipped in future tournaments."""
+    try:
+        profile = await asyncio.to_thread(_exclude_agent, client_id, req.agent_name)
+        return {"client_id": client_id, "excluded_agents": profile.get("excluded_agents", [])}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.delete("/client/{client_id}/agent-history/{agent_name}")
+async def reset_agent_history_endpoint(client_id: str, agent_name: str):
+    """Clear deviation history for an agent and remove its red-flag status."""
+    try:
+        calibration = await asyncio.to_thread(_reset_agent_history, client_id, agent_name)
+        return {"client_id": client_id, "agent_name": agent_name, "calibration": calibration}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

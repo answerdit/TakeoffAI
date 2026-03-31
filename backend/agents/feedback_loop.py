@@ -377,3 +377,44 @@ def get_agent_accuracy_report(client_id: str) -> dict:
     report["win_prob_predictions_count"] = len(cal.get("win_prob_predictions", []))
 
     return report
+
+
+def exclude_agent(client_id: str, agent_name: str) -> dict:
+    """
+    Add agent_name to excluded_agents list in client profile.
+    Tournament engine skips excluded agents when running for this client.
+    Returns updated profile.
+    """
+    path = _profile_path(client_id)
+    profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
+    excluded = profile.setdefault("excluded_agents", [])
+    if agent_name not in excluded:
+        excluded.append(agent_name)
+    path.write_text(json.dumps(profile, indent=2))
+    return profile
+
+
+def reset_agent_history(client_id: str, agent_name: str) -> dict:
+    """
+    Clear deviation history for agent_name and remove from red_flagged_agents.
+    Used when an estimator decides to give a flagged agent a clean slate.
+    Returns updated calibration block.
+    """
+    path = _profile_path(client_id)
+    profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
+
+    cal = profile.setdefault("calibration", {
+        "win_prob_predictions": [],
+        "win_prob_actuals": [],
+        "brier_score": None,
+        "confidence_accuracy": {},
+        "agent_deviation_history": {a: [] for a in ALL_AGENTS},
+        "red_flagged_agents": [],
+    })
+    cal.setdefault("agent_deviation_history", {})[agent_name] = []
+    red_flagged = cal.setdefault("red_flagged_agents", [])
+    if agent_name in red_flagged:
+        red_flagged.remove(agent_name)
+
+    path.write_text(json.dumps(profile, indent=2))
+    return profile.get("calibration", {})
