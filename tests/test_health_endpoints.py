@@ -45,3 +45,11 @@ def test_post_verify_run_returns_summary(client):
     assert data["status"] == "complete"
     assert data["items_checked"] == 22
     assert "triggered_at" in data
+
+
+def test_post_verify_run_returns_500_on_error(client):
+    with patch("backend.api.verification.run_verification_batch",
+               new=AsyncMock(side_effect=RuntimeError("network timeout"))):
+        resp = client.post("/api/verify/run")
+    assert resp.status_code == 500
+    assert "network timeout" in resp.json().get("detail", "")

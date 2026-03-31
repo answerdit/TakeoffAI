@@ -21,7 +21,7 @@ CSV_PATH = Path(__file__).parent / "data" / "material_costs.csv"
 _scheduler: AsyncIOScheduler = AsyncIOScheduler()
 
 
-async def run_verification_batch() -> dict:
+async def run_verification_batch(triggered_by: str = "on_demand") -> dict:
     """
     Verify all rows in material_costs.csv against web sources.
     Returns a summary dict. Called by both the nightly scheduler and the
@@ -52,7 +52,7 @@ async def run_verification_batch() -> dict:
     ]
 
     triggered_at = datetime.now(timezone.utc)
-    records = await verify_line_items(line_items, triggered_by="on_demand")
+    records = await verify_line_items(line_items, triggered_by=triggered_by)
     elapsed = (datetime.now(timezone.utc) - triggered_at).total_seconds()
 
     return {
@@ -70,11 +70,14 @@ async def _run_nightly_verification() -> None:
     Nightly job: verify every row in material_costs.csv against web sources.
     Delegates to run_verification_batch() and logs the summary.
     """
-    result = await run_verification_batch()
-    logger.info(
-        "Nightly verification: %s items checked | %s flagged | %s auto-updated | %.1fs",
-        result["items_checked"], result["flagged"], result["auto_updated"], result["duration_seconds"],
-    )
+    try:
+        result = await run_verification_batch(triggered_by="nightly")
+        logger.info(
+            "Nightly verification: %s items checked | %s flagged | %s auto-updated | %.1fs",
+            result["items_checked"], result["flagged"], result["auto_updated"], result["duration_seconds"],
+        )
+    except Exception as exc:
+        logger.error("Nightly verification failed: %s", exc, exc_info=True)
 
 
 def start_scheduler() -> None:
