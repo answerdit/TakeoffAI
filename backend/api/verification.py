@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from backend.agents.feedback_loop import get_agent_accuracy_report, record_actual_outcome
 from backend.agents.price_verifier import verify_line_items
+from backend.scheduler import run_verification_batch
 
 DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
 
@@ -186,5 +187,15 @@ async def get_accuracy(client_id: str):
         return report
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@verification_router.post("/verify/run")
+async def run_verification():
+    """On-demand: trigger verification of all material_costs.csv rows. Waits for completion."""
+    try:
+        result = await run_verification_batch()
+        return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

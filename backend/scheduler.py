@@ -6,7 +6,7 @@ Uses APScheduler with AsyncIOScheduler; started/stopped by FastAPI lifespan.
 
 import csv
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -21,22 +21,26 @@ CSV_PATH = Path(__file__).parent / "data" / "material_costs.csv"
 _scheduler: AsyncIOScheduler = AsyncIOScheduler()
 
 
-async def _run_nightly_verification() -> None:
+async def run_verification_batch() -> dict:
     """
-    Nightly job: verify every row in material_costs.csv against web sources.
-    Logs a summary of updated, flagged, and failed items.
+    Verify all rows in material_costs.csv against web sources.
+    Returns a summary dict. Called by both the nightly scheduler and the
+    on-demand API endpoint POST /api/verify/run.
     """
     if not CSV_PATH.exists():
-        logger.warning("material_costs.csv not found; skipping nightly verification")
-        return
+        return {
+            "status": "skipped",
+            "reason": "material_costs.csv not found",
+            "items_checked": 0,
+            "flagged": 0,
+            "auto_updated": 0,
+            "duration_seconds": 0.0,
+            "triggered_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     with CSV_PATH.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
-    if not rows:
-        logger.info("material_costs.csv is empty; nothing to verify")
-        return
 
-    # Build synthetic line items from CSV rows
     line_items = [
         {
             "description": row["item"],
@@ -47,24 +51,29 @@ async def _run_nightly_verification() -> None:
         if row.get("item") and row.get("unit")
     ]
 
-    logger.info("Starting nightly verification for %d items", len(line_items))
-    start = datetime.utcnow()
+    triggered_at = datetime.now(timezone.utc)
+    records = await verify_line_items(line_items, triggered_by="on_demand")
+    elapsed = (datetime.now(timezone.utc) - triggered_at).total_seconds()
 
-    try:
-        records = await verify_line_items(line_items, triggered_by="nightly")
-    except Exception as exc:
-        logger.error("Nightly verification failed: %s", exc)
-        return
+    return {
+        "status": "complete",
+        "items_checked": len(records),
+        "flagged": sum(1 for r in records if r.get("flagged")),
+        "auto_updated": sum(1 for r in records if r.get("auto_updated")),
+        "duration_seconds": round(elapsed, 1),
+        "triggered_at": triggered_at.isoformat(),
+    }
 
-    elapsed = (datetime.utcnow() - start).total_seconds()
-    updated = sum(1 for r in records if r.get("auto_updated"))
-    flagged = sum(1 for r in records if r.get("flagged"))
-    no_source = sum(1 for r in records if r.get("source_count", 0) == 0)
 
+async def _run_nightly_verification() -> None:
+    """
+    Nightly job: verify every row in material_costs.csv against web sources.
+    Delegates to run_verification_batch() and logs the summary.
+    """
+    result = await run_verification_batch()
     logger.info(
-        "Nightly verification complete in %.1fs: %d items | "
-        "%d auto-updated | %d flagged | %d no-source",
-        elapsed, len(records), updated, flagged, no_source,
+        "Nightly verification: %s items checked | %s flagged | %s auto-updated | %.1fs",
+        result["items_checked"], result["flagged"], result["auto_updated"], result["duration_seconds"],
     )
 
 
