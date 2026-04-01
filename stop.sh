@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # TakeoffAI — Stop
 # Usage: bash ~/TakeoffAI/stop.sh
+#
+# Uses 'docker compose stop' (not down) to preserve the container filesystem
+# so any AI-evolved prompt improvements survive between sessions.
+# To fully reset: docker compose down  (wipes evolved prompts, keeps data volume)
 
 YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
@@ -18,7 +22,7 @@ if ! docker info &>/dev/null; then
 fi
 
 cd "$INSTALL_DIR"
-docker compose down
+docker compose stop
 
 echo ""
 echo -e "${GREEN}✅ TakeoffAI stopped.${NC}"

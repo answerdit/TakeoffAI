@@ -37,9 +37,15 @@ fi
 
 echo -e "${GREEN}✓ Docker Desktop is running${NC}"
 
-# ── Start containers ──────────────────────────────────────────────────────────
+# ── Start containers (resume if stopped, create if first run) ─────────────────
 cd "$INSTALL_DIR"
-docker compose up -d
+
+EXISTING=$(docker compose ps -q 2>/dev/null)
+if [ -n "$EXISTING" ]; then
+  docker compose start
+else
+  docker compose up -d
+fi
 
 # ── Wait for health ───────────────────────────────────────────────────────────
 echo -n "Waiting for backend"
@@ -52,7 +58,7 @@ for i in {1..40}; do
   sleep 2
   if [ "$i" -eq 40 ]; then
     echo ""
-    echo -e "${RED}Backend did not respond. Check logs: docker compose logs backend${NC}"
+    echo -e "${RED}Backend did not respond. Check logs: cd ~/TakeoffAI && docker compose logs backend${NC}"
     exit 1
   fi
 done
