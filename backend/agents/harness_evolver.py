@@ -128,7 +128,7 @@ _TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute path. Must be under backend/data/.",
+                    "description": "Relative or absolute path. Must be under backend/data/.",
                 }
             },
             "required": ["path"],
@@ -157,7 +157,7 @@ def _handle_list_traces(
             if meta.get("client_id") != client_id:
                 continue
             results.append({
-                "path": str(f),
+                "path": str(f.relative_to(data_dir)),
                 "agent_name": meta.get("agent_name"),
                 "tournament_id": meta.get("tournament_id"),
                 "total_bid": meta.get("estimate", {}).get("total_bid"),
@@ -173,7 +173,8 @@ def _handle_list_traces(
 def _handle_read_file(data_dir: Path, path: str) -> dict:
     """Read a file inside data_dir. Returns error dict if path is outside or missing."""
     try:
-        target = Path(path).resolve()
+        p = Path(path)
+        target = (data_dir / p).resolve() if not p.is_absolute() else p.resolve()
         allowed = data_dir.resolve()
         if not str(target).startswith(str(allowed)):
             return {"error": f"Access denied: path must be under {allowed}"}
@@ -226,6 +227,7 @@ def _run_agentic_proposer(
 
     client = anthropic.Anthropic()
     messages: list[dict] = [{"role": "user", "content": initial_message}]
+    forced = False
     tool_call_count = 0
 
     while True:
@@ -235,8 +237,10 @@ def _run_agentic_proposer(
             "system": _SYSTEM_PROMPT,
             "messages": messages,
         }
-        if tool_call_count < HARNESS_EVOLVER_MAX_TOOL_CALLS:
+        if tool_call_count < HARNESS_EVOLVER_MAX_TOOL_CALLS and not forced:
             kwargs["tools"] = _TOOLS
+        elif forced:
+            kwargs["tool_choice"] = {"type": "none"}
 
         response = client.messages.create(**kwargs)
         messages.append({"role": "assistant", "content": response.content})
@@ -275,6 +279,12 @@ def _run_agentic_proposer(
                         "Output your proposed prompts now as a JSON object."
                     ),
                 })
+                forced = True
+
+        else:
+            raise ValueError(
+                f"Agentic proposer: unexpected stop_reason '{response.stop_reason}'"
+            )
 
 
 async def evolve_harness(client_id: str) -> dict:
