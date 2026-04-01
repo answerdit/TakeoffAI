@@ -14,6 +14,7 @@ import aiosqlite
 from backend.agents.pre_bid_calc import run_prebid_calc_with_modifier
 
 DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
+TRACES_DIR = Path(__file__).parent.parent / "data" / "traces"
 
 # ── Personality system-prompt modifiers ───────────────────────────────────────
 
@@ -137,7 +138,13 @@ async def _save_entries(
     db: aiosqlite.Connection,
     tournament_id: int,
     results: list[AgentResult],
+    client_id: Optional[str] = None,
+    description: str = "",
+    zip_code: str = "",
 ) -> None:
+    import logging
+    from datetime import datetime, timezone
+
     for result in results:
         await db.execute(
             """INSERT INTO tournament_entries
@@ -151,6 +158,32 @@ async def _save_entries(
             ),
         )
     await db.commit()
+
+    # Write trace files — best-effort, must not break tournament
+    if client_id:
+        logger = logging.getLogger(__name__)
+        trace_dir = TRACES_DIR / str(tournament_id)
+        try:
+            trace_dir.mkdir(parents=True, exist_ok=True)
+            for result in results:
+                trace = {
+                    "tournament_id": tournament_id,
+                    "agent_name": result.agent_name,
+                    "client_id": client_id,
+                    "project_description": description,
+                    "zip_code": zip_code,
+                    "won": False,
+                    "score": None,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "estimate": result.estimate,
+                }
+                (trace_dir / f"{result.agent_name}.json").write_text(
+                    json.dumps(trace, indent=2)
+                )
+        except Exception as exc:
+            logger.warning(
+                "Failed to write trace files for tournament %s: %s", tournament_id, exc
+            )
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -207,6 +240,6 @@ async def run_tournament(
 
     async with aiosqlite.connect(DB_PATH) as db:
         tournament_id = await _save_tournament(db, client_id, description, zip_code)
-        await _save_entries(db, tournament_id, results)
+        await _save_entries(db, tournament_id, results, client_id, description, zip_code)
 
     return TournamentResult(tournament_id=tournament_id, entries=results)
