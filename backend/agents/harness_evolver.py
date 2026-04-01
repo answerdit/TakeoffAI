@@ -79,72 +79,6 @@ def check_dominance(client_id: str) -> bool:
     return max(win_rates.values()) > DOMINANCE_THRESHOLD
 
 
-def _build_context_prompt(
-    profile: dict,
-    underperforming: list[str],
-    dominant_agent: str,
-    dominant_rate: float,
-) -> str:
-    """Build the diagnostic context prompt sent to Claude."""
-    from backend.agents.tournament import PERSONALITY_PROMPTS
-
-    current_prompts = "\n\n".join(
-        f'CURRENT PROMPT FOR "{agent}":\n{PERSONALITY_PROMPTS[agent]}'
-        for agent in underperforming
-        if agent in PERSONALITY_PROMPTS
-    )
-    win_rates = profile.get("stats", {}).get("win_rate_by_agent", {})
-    cal = profile.get("calibration", {})
-    dev_history = cal.get("agent_deviation_history", {})
-    examples = profile.get("winning_examples", [])[-5:]
-
-    return f"""You are improving an AI construction bidding tournament system.
-
-The system runs 5 agent personalities that each estimate construction job costs.
-The personality that produces the most competitive (winning) bid is reinforced.
-
-PROBLEM: One agent is dominating — the others need more distinctive, competitive strategies.
-
-Dominant agent: {dominant_agent} ({dominant_rate:.0%} win rate)
-Agents to improve: {", ".join(underperforming)}
-
-WIN RATES BY AGENT:
-{json.dumps(win_rates, indent=2)}
-
-DEVIATION HISTORY (last recorded deviations from actual costs, per agent):
-{json.dumps({a: dev_history.get(a, []) for a in underperforming}, indent=2)}
-
-LAST 5 WINNING EXAMPLES:
-{json.dumps(examples, indent=2)}
-
-CURRENT PROMPTS FOR UNDERPERFORMING AGENTS:
-{current_prompts}
-
-TASK: Rewrite ONLY the underperforming agents' personality prompts to make them
-more competitive. Preserve diversity of bidding strategy — do not homogenize.
-Each prompt must guide an LLM estimator with a distinct, viable approach.
-Do NOT rewrite the {dominant_agent} prompt.
-
-Return ONLY a valid JSON object mapping agent name to new prompt string.
-Include only the agents listed under "Agents to improve". Example format:
-{{
-  "conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\n...",
-  "balanced": "## BIDDING PERSONALITY: BALANCED\\n..."
-}}"""
-
-
-def _call_claude_sync(prompt: str) -> str:
-    import anthropic
-
-    client = anthropic.Anthropic()
-    message = client.messages.create(
-        model=HARNESS_EVOLVER_MODEL,
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return message.content[0].text.strip()
-
-
 def _git_commit(repo_root: Path, tournament_py: Path, commit_msg: str) -> str | None:
     try:
         subprocess.run(["git", "add", str(tournament_py)], cwd=repo_root, check=True)
@@ -254,6 +188,95 @@ def _handle_read_file(data_dir: Path, path: str) -> dict:
         return {"error": str(exc)}
 
 
+_SYSTEM_PROMPT = (
+    "You are a harness optimization agent for a construction bidding AI system. "
+    "The system runs 5 bidding personalities in parallel on each job. You must improve "
+    "the underperforming personalities by finding concrete evidence of why they lose.\n\n"
+    "Use list_traces to find relevant tournaments, read_file to examine bid breakdowns "
+    "in detail, and read the client profile for aggregate win rates and history.\n\n"
+    "When you have sufficient evidence, output ONLY a valid JSON object mapping "
+    "agent name to new prompt string. Include only the agents you were asked to improve."
+)
+
+
+def _run_agentic_proposer(
+    *,
+    data_dir: Path,
+    client_id: str,
+    underperforming: list[str],
+    dominant_agent: str,
+    dominant_rate: float,
+    profile_path: Path,
+) -> str:
+    """
+    Run an agentic loop with file-reading tools. Claude navigates trace files to
+    gather diagnostic evidence, then proposes improved personality prompts.
+    Returns raw text from Claude's final response (JSON string, possibly markdown-wrapped).
+    """
+    import anthropic
+
+    initial_message = (
+        f"Client: {client_id}\n"
+        f"Dominant agent: {dominant_agent} ({dominant_rate:.0%} win rate)\n"
+        f"Agents to improve: {', '.join(underperforming)}\n\n"
+        f"Client profile path: {profile_path}\n\n"
+        "Investigate why the underperforming agents lose by reading trace files, "
+        "then propose improved personality prompts."
+    )
+
+    client = anthropic.Anthropic()
+    messages: list[dict] = [{"role": "user", "content": initial_message}]
+    tool_call_count = 0
+
+    while True:
+        kwargs: dict = {
+            "model": HARNESS_EVOLVER_MODEL,
+            "max_tokens": 4096,
+            "system": _SYSTEM_PROMPT,
+            "messages": messages,
+        }
+        if tool_call_count < HARNESS_EVOLVER_MAX_TOOL_CALLS:
+            kwargs["tools"] = _TOOLS
+
+        response = client.messages.create(**kwargs)
+        messages.append({"role": "assistant", "content": response.content})
+
+        if response.stop_reason == "end_turn":
+            for block in response.content:
+                if hasattr(block, "text"):
+                    return block.text.strip()
+            raise ValueError("Agentic proposer returned no text in final response")
+
+        if response.stop_reason == "tool_use":
+            tool_results = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    tool_call_count += 1
+                    if block.name == "list_traces":
+                        result = _handle_list_traces(data_dir, **block.input)
+                    elif block.name == "read_file":
+                        result = _handle_read_file(data_dir, block.input["path"])
+                    else:
+                        result = {"error": f"Unknown tool: {block.name}"}
+
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result),
+                    })
+
+            messages.append({"role": "user", "content": tool_results})
+
+            if tool_call_count >= HARNESS_EVOLVER_MAX_TOOL_CALLS:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "You have enough context. "
+                        "Output your proposed prompts now as a JSON object."
+                    ),
+                })
+
+
 async def evolve_harness(client_id: str) -> dict:
     """
     Read client diagnostic context, call Claude to propose improved prompts
@@ -294,9 +317,18 @@ async def evolve_harness(client_id: str) -> dict:
         dominant_rate = win_rates[dominant_agent]
         underperforming = [a for a in ALL_AGENTS if a != dominant_agent]
 
-        # ── Call Claude ───────────────────────────────────────────────────────
-        prompt = _build_context_prompt(profile, underperforming, dominant_agent, dominant_rate)
-        raw = await asyncio.to_thread(_call_claude_sync, prompt)
+        # ── Call Claude (agentic loop) ────────────────────────────────────────
+        from backend.agents.feedback_loop import _profile_path as _fp
+        data_dir = TOURNAMENT_PY.parent.parent / "data"
+        raw = await asyncio.to_thread(
+            _run_agentic_proposer,
+            data_dir=data_dir,
+            client_id=client_id,
+            underperforming=underperforming,
+            dominant_agent=dominant_agent,
+            dominant_rate=dominant_rate,
+            profile_path=_fp(client_id),
+        )
 
         # ── Parse JSON response ───────────────────────────────────────────────
         try:

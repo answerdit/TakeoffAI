@@ -164,17 +164,15 @@ def test_evolve_harness_applies_proposed_prompts(tmp_path, monkeypatch):
     }
     (tmp_path / "default.json").write_text(json.dumps(profile))
 
-    mock_msg = MagicMock()
-    mock_msg.content = [MagicMock(
-        text='{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEVOLVED CONTENT\\n"}'
-    )]
-
-    with patch("backend.agents.harness_evolver._call_claude_sync") as mock_call:
-        mock_call.return_value = '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEVOLVED CONTENT\\n"}'
-        monkeypatch.setattr(ev, "_get_generation_number", lambda: 0)
-        with patch("backend.agents.harness_evolver._git_commit") as mock_git:
-            mock_git.return_value = "abc1234"
-            result = asyncio.run(ev.evolve_harness("default"))
+    monkeypatch.setattr(
+        ev,
+        "_run_agentic_proposer",
+        lambda **kw: '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEVOLVED CONTENT\\n"}',
+    )
+    monkeypatch.setattr(ev, "_get_generation_number", lambda: 0)
+    with patch("backend.agents.harness_evolver._git_commit") as mock_git:
+        mock_git.return_value = "abc1234"
+        result = asyncio.run(ev.evolve_harness("default"))
 
     assert result["status"] == "evolved"
     assert "conservative" in result["evolved_agents"]
@@ -223,12 +221,11 @@ def test_evolve_harness_handles_markdown_wrapped_json(tmp_path, monkeypatch):
 
     wrapped = '```json\n{"balanced": "## BIDDING PERSONALITY: BALANCED\\nFROM MARKDOWN\\n"}\n```'
 
-    with patch("backend.agents.harness_evolver._call_claude_sync") as mock_call:
-        mock_call.return_value = wrapped
-        monkeypatch.setattr(ev, "_get_generation_number", lambda: 2)
-        with patch("backend.agents.harness_evolver._git_commit") as mock_git:
-            mock_git.return_value = "def5678"
-            result = asyncio.run(ev.evolve_harness("md_client"))
+    monkeypatch.setattr(ev, "_run_agentic_proposer", lambda **kw: wrapped)
+    monkeypatch.setattr(ev, "_get_generation_number", lambda: 2)
+    with patch("backend.agents.harness_evolver._git_commit") as mock_git:
+        mock_git.return_value = "def5678"
+        result = asyncio.run(ev.evolve_harness("md_client"))
 
     assert result["status"] == "evolved"
     assert "FROM MARKDOWN" in fake_tourn.read_text()
@@ -385,15 +382,18 @@ def test_post_evolve_returns_evolved_on_success(tmp_path, monkeypatch):
     }
     (tmp_path / "evolve_client.json").write_text(json.dumps(profile))
 
-    with patch("backend.agents.harness_evolver._call_claude_sync") as mock_call:
-        mock_call.return_value = '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEP TEST\\n"}'
-        monkeypatch.setattr(ev, "_get_generation_number", lambda: 1)
-        with patch("backend.agents.harness_evolver._git_commit") as mock_git:
-            mock_git.return_value = "fff9999"
-            app = FastAPI()
-            app.include_router(router, prefix="/api")
-            with TestClient(app) as c:
-                resp = c.post("/api/tournament/evolve", json={"client_id": "evolve_client"})
+    monkeypatch.setattr(
+        ev,
+        "_run_agentic_proposer",
+        lambda **kw: '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEP TEST\\n"}',
+    )
+    monkeypatch.setattr(ev, "_get_generation_number", lambda: 1)
+    with patch("backend.agents.harness_evolver._git_commit") as mock_git:
+        mock_git.return_value = "fff9999"
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        with TestClient(app) as c:
+            resp = c.post("/api/tournament/evolve", json={"client_id": "evolve_client"})
 
     assert resp.status_code == 200
     data = resp.json()

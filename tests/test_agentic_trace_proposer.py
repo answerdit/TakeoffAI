@@ -228,3 +228,145 @@ def test_read_file_returns_error_for_missing_file(tmp_path):
 
     result = ev._handle_read_file(tmp_path, str(tmp_path / "nonexistent.json"))
     assert "error" in result
+
+
+# ── Agentic loop tests ─────────────────────────────────────────────────────────
+
+def test_agentic_proposer_multi_turn_tool_loop(tmp_path, monkeypatch):
+    """_run_agentic_proposer processes multi-turn tool calls and returns proposed JSON."""
+    import backend.agents.harness_evolver as ev
+
+    # Build mock responses: list_traces → read_file → end_turn with JSON
+    list_traces_block = MagicMock()
+    list_traces_block.type = "tool_use"
+    list_traces_block.id = "tu1"
+    list_traces_block.name = "list_traces"
+    list_traces_block.input = {"client_id": "c1"}
+
+    read_file_block = MagicMock()
+    read_file_block.type = "tool_use"
+    read_file_block.id = "tu2"
+    read_file_block.name = "read_file"
+    read_file_block.input = {"path": str(tmp_path / "1" / "aggressive.json")}
+
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nNEW CONTENT\\n"}'
+
+    r1 = MagicMock(stop_reason="tool_use", content=[list_traces_block])
+    r2 = MagicMock(stop_reason="tool_use", content=[read_file_block])
+    r3 = MagicMock(stop_reason="end_turn", content=[text_block])
+
+    call_count = [0]
+    def mock_create(**kwargs):
+        resp = [r1, r2, r3][min(call_count[0], 2)]
+        call_count[0] += 1
+        return resp
+
+    monkeypatch.setattr(ev, "_handle_list_traces", lambda data_dir, **kw: [])
+    monkeypatch.setattr(ev, "_handle_read_file", lambda data_dir, path: {"agent_name": "aggressive"})
+
+    with patch("anthropic.Anthropic") as mock_cls:
+        mock_cls.return_value.messages.create.side_effect = mock_create
+        result = ev._run_agentic_proposer(
+            data_dir=tmp_path,
+            client_id="c1",
+            underperforming=["conservative", "balanced"],
+            dominant_agent="aggressive",
+            dominant_rate=0.72,
+            profile_path=tmp_path / "c1.json",
+        )
+
+    assert "NEW CONTENT" in result
+    assert call_count[0] == 3
+
+
+def test_agentic_proposer_soft_cap_forces_proposal(tmp_path, monkeypatch):
+    """When tool calls hit MAX_TOOL_CALLS, a forcing message is injected."""
+    import backend.agents.harness_evolver as ev
+
+    monkeypatch.setattr(ev, "HARNESS_EVOLVER_MAX_TOOL_CALLS", 2)
+
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.id = "tu"
+    tool_block.name = "list_traces"
+    tool_block.input = {"client_id": "c1"}
+
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = '{"balanced": "## BIDDING PERSONALITY: BALANCED\\nFORCED\\n"}'
+
+    tool_response = MagicMock(stop_reason="tool_use", content=[tool_block])
+    final_response = MagicMock(stop_reason="end_turn", content=[text_block])
+
+    call_count = [0]
+    captured_messages = []
+
+    def mock_create(**kwargs):
+        captured_messages.append(kwargs.get("messages", []))
+        call_count[0] += 1
+        if call_count[0] <= 2:
+            return tool_response
+        return final_response
+
+    monkeypatch.setattr(ev, "_handle_list_traces", lambda data_dir, **kw: [])
+
+    with patch("anthropic.Anthropic") as mock_cls:
+        mock_cls.return_value.messages.create.side_effect = mock_create
+        result = ev._run_agentic_proposer(
+            data_dir=tmp_path,
+            client_id="c1",
+            underperforming=["balanced"],
+            dominant_agent="aggressive",
+            dominant_rate=0.72,
+            profile_path=tmp_path / "c1.json",
+        )
+
+    assert "FORCED" in result
+    # The forcing message must appear in one of the calls
+    all_messages = [m for msgs in captured_messages for m in msgs]
+    assert any(
+        isinstance(m.get("content"), str) and "enough context" in m["content"].lower()
+        for m in all_messages
+        if isinstance(m, dict)
+    )
+
+
+def test_evolve_harness_uses_agentic_proposer(tmp_path, monkeypatch):
+    """evolve_harness calls _run_agentic_proposer and rewrites tournament.py."""
+    import shutil
+    import backend.agents.feedback_loop as fl
+    import backend.agents.harness_evolver as ev
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    fake_tourn = tmp_path / "tournament.py"
+    shutil.copy(ev.TOURNAMENT_PY, fake_tourn)
+    monkeypatch.setattr(ev, "TOURNAMENT_PY", fake_tourn)
+
+    profile = {
+        "client_id": "evo_client",
+        "winning_examples": [],
+        "stats": {
+            "total_tournaments": 15,
+            "win_rate_by_agent": {
+                "conservative": 0.07, "balanced": 0.07, "aggressive": 0.72,
+                "historical_match": 0.07, "market_beater": 0.07,
+            },
+            "avg_winning_bid": 0.0, "avg_winning_margin": 0.0, "wins_by_agent": {},
+        },
+    }
+    (tmp_path / "evo_client.json").write_text(json.dumps(profile))
+
+    monkeypatch.setattr(
+        ev,
+        "_run_agentic_proposer",
+        lambda **kw: '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nAGENTIC CONTENT\\n"}',
+    )
+    monkeypatch.setattr(ev, "_get_generation_number", lambda: 0)
+    with patch("backend.agents.harness_evolver._git_commit") as mock_git:
+        mock_git.return_value = "abc1234"
+        result = asyncio.run(ev.evolve_harness("evo_client"))
+
+    assert result["status"] == "evolved"
+    assert "AGENTIC CONTENT" in fake_tourn.read_text()
