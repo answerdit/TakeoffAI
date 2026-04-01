@@ -237,10 +237,11 @@ def _run_agentic_proposer(
             "system": _SYSTEM_PROMPT,
             "messages": messages,
         }
-        if tool_call_count < HARNESS_EVOLVER_MAX_TOOL_CALLS and not forced:
+        if forced:
             kwargs["tools"] = _TOOLS
-        elif forced:
             kwargs["tool_choice"] = {"type": "none"}
+        elif tool_call_count < HARNESS_EVOLVER_MAX_TOOL_CALLS:
+            kwargs["tools"] = _TOOLS
 
         response = client.messages.create(**kwargs)
         messages.append({"role": "assistant", "content": response.content})
