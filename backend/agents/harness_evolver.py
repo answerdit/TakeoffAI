@@ -1,0 +1,234 @@
+"""
+Harness Evolver — TakeoffAI
+Observes agent win-rate imbalance and evolves underperforming PERSONALITY_PROMPTS
+in tournament.py using Claude as a proposer. Each successful evolution is committed
+to git — rollback and fork are native git operations.
+"""
+
+import asyncio
+import json
+import os
+import re
+import subprocess
+from pathlib import Path
+
+MIN_TOURNAMENTS = 10
+DOMINANCE_THRESHOLD = 0.60
+HARNESS_EVOLVER_MODEL = os.getenv("HARNESS_EVOLVER_MODEL", "claude-sonnet-4-6")
+
+TOURNAMENT_PY = Path(__file__).parent / "tournament.py"
+
+_evolution_lock = asyncio.Lock()
+
+
+def _get_generation_number() -> int:
+    """Count prior harness evolution git commits."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "--oneline", "--grep=harness: gen"],
+            capture_output=True,
+            text=True,
+            cwd=TOURNAMENT_PY.parent.parent.parent,
+        )
+        lines = [l for l in result.stdout.strip().splitlines() if l]
+        return len(lines)
+    except Exception:
+        return 0
+
+
+def _replace_prompt_in_source(source: str, agent_name: str, new_prompt: str) -> str:
+    """Surgically replace the triple-quoted string for agent_name in tournament.py source."""
+    pattern = rf'("{agent_name}":\s*""")(.*?)(""")'
+    return re.sub(
+        pattern,
+        lambda m: m.group(1) + new_prompt + m.group(3),
+        source,
+        flags=re.DOTALL,
+    )
+
+
+def check_dominance(client_id: str) -> bool:
+    """
+    Return True if one agent has won > DOMINANCE_THRESHOLD of this client's
+    tournaments and MIN_TOURNAMENTS have been played.
+    Called synchronously from judge.py before firing a background evolution task.
+    """
+    from backend.agents.feedback_loop import _profile_path
+
+    path = _profile_path(client_id)
+    if not path.exists():
+        return False
+
+    profile = json.loads(path.read_text())
+    total = profile.get("stats", {}).get("total_tournaments", 0)
+    if total < MIN_TOURNAMENTS:
+        return False
+
+    win_rates = profile.get("stats", {}).get("win_rate_by_agent", {})
+    if not win_rates:
+        return False
+
+    return max(win_rates.values()) > DOMINANCE_THRESHOLD
+
+
+def _build_context_prompt(
+    profile: dict,
+    underperforming: list[str],
+    dominant_agent: str,
+    dominant_rate: float,
+) -> str:
+    """Build the diagnostic context prompt sent to Claude."""
+    from backend.agents.tournament import PERSONALITY_PROMPTS
+
+    current_prompts = "\n\n".join(
+        f'CURRENT PROMPT FOR "{agent}":\n{PERSONALITY_PROMPTS[agent]}'
+        for agent in underperforming
+        if agent in PERSONALITY_PROMPTS
+    )
+    win_rates = profile.get("stats", {}).get("win_rate_by_agent", {})
+    cal = profile.get("calibration", {})
+    dev_history = cal.get("agent_deviation_history", {})
+    examples = profile.get("winning_examples", [])[-5:]
+
+    return f"""You are improving an AI construction bidding tournament system.
+
+The system runs 5 agent personalities that each estimate construction job costs.
+The personality that produces the most competitive (winning) bid is reinforced.
+
+PROBLEM: One agent is dominating — the others need more distinctive, competitive strategies.
+
+Dominant agent: {dominant_agent} ({dominant_rate:.0%} win rate)
+Agents to improve: {", ".join(underperforming)}
+
+WIN RATES BY AGENT:
+{json.dumps(win_rates, indent=2)}
+
+DEVIATION HISTORY (last recorded deviations from actual costs, per agent):
+{json.dumps({a: dev_history.get(a, []) for a in underperforming}, indent=2)}
+
+LAST 5 WINNING EXAMPLES:
+{json.dumps(examples, indent=2)}
+
+CURRENT PROMPTS FOR UNDERPERFORMING AGENTS:
+{current_prompts}
+
+TASK: Rewrite ONLY the underperforming agents' personality prompts to make them
+more competitive. Preserve diversity of bidding strategy — do not homogenize.
+Each prompt must guide an LLM estimator with a distinct, viable approach.
+Do NOT rewrite the {dominant_agent} prompt.
+
+Return ONLY a valid JSON object mapping agent name to new prompt string.
+Include only the agents listed under "Agents to improve". Example format:
+{{
+  "conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\n...",
+  "balanced": "## BIDDING PERSONALITY: BALANCED\\n..."
+}}"""
+
+
+async def evolve_harness(client_id: str) -> dict:
+    """
+    Read client diagnostic context, call Claude to propose improved prompts
+    for underperforming agents, apply changes to tournament.py, and git commit.
+
+    Returns a result dict with status: 'evolved' | 'skipped' | 'locked'.
+    Raises ValueError on bad Claude response.
+    """
+    if _evolution_lock.locked():
+        return {"status": "locked"}
+
+    async with _evolution_lock:
+        from backend.agents.feedback_loop import _profile_path, ALL_AGENTS
+
+        path = _profile_path(client_id)
+        if not path.exists():
+            return {"status": "skipped", "reason": "no profile found"}
+
+        profile = json.loads(path.read_text())
+        total = profile.get("stats", {}).get("total_tournaments", 0)
+
+        if total < MIN_TOURNAMENTS:
+            return {
+                "status": "skipped",
+                "reason": f"insufficient data ({total}/{MIN_TOURNAMENTS} tournaments)",
+            }
+
+        win_rates = profile.get("stats", {}).get("win_rate_by_agent", {})
+        if not win_rates or max(win_rates.values()) <= DOMINANCE_THRESHOLD:
+            return {
+                "status": "skipped",
+                "reason": "no dominance detected",
+                "win_rates": win_rates,
+            }
+
+        dominant_agent = max(win_rates, key=win_rates.get)
+        dominant_rate = win_rates[dominant_agent]
+        underperforming = [a for a in ALL_AGENTS if a != dominant_agent]
+
+        # ── Call Claude ───────────────────────────────────────────────────────
+        import anthropic
+
+        prompt = _build_context_prompt(profile, underperforming, dominant_agent, dominant_rate)
+        client = anthropic.Anthropic()
+        message = client.messages.create(
+            model=HARNESS_EVOLVER_MODEL,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = message.content[0].text.strip()
+
+        # ── Parse JSON response ───────────────────────────────────────────────
+        try:
+            proposed = json.loads(raw)
+        except json.JSONDecodeError:
+            match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+            if match:
+                proposed = json.loads(match.group(1))
+            else:
+                raise ValueError(f"Claude returned non-JSON response: {raw[:300]}")
+
+        # Only apply keys that are valid underperforming agents
+        valid_proposed = {
+            k: v
+            for k, v in proposed.items()
+            if k in ALL_AGENTS and k != dominant_agent
+        }
+        if not valid_proposed:
+            raise ValueError(f"Claude returned no valid agent keys: {list(proposed.keys())}")
+
+        # ── Apply to tournament.py ────────────────────────────────────────────
+        source = TOURNAMENT_PY.read_text()
+        for agent_name, new_prompt in valid_proposed.items():
+            source = _replace_prompt_in_source(source, agent_name, new_prompt)
+        TOURNAMENT_PY.write_text(source)
+
+        # ── Git commit ────────────────────────────────────────────────────────
+        gen = _get_generation_number() + 1
+        agent_list = ",".join(valid_proposed.keys())
+        commit_msg = (
+            f"harness: gen-{gen} — evolved {agent_list} "
+            f"(dominant: {dominant_agent} at {dominant_rate:.0%})"
+        )
+        commit_hash = None
+        try:
+            repo_root = TOURNAMENT_PY.parent.parent.parent
+            subprocess.run(["git", "add", str(TOURNAMENT_PY)], cwd=repo_root, check=True)
+            subprocess.run(["git", "commit", "-m", commit_msg], cwd=repo_root, check=True)
+            result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                cwd=repo_root,
+            )
+            commit_hash = result.stdout.strip()
+        except subprocess.CalledProcessError:
+            # File is already written on disk — not fatal, return commit: null
+            pass
+
+        return {
+            "status": "evolved",
+            "generation": gen,
+            "evolved_agents": list(valid_proposed.keys()),
+            "dominant_agent": dominant_agent,
+            "dominant_win_rate": dominant_rate,
+            "commit": commit_hash,
+        }
