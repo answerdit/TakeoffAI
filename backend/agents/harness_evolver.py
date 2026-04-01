@@ -18,7 +18,14 @@ HARNESS_EVOLVER_MODEL = os.getenv("HARNESS_EVOLVER_MODEL", "claude-sonnet-4-6")
 
 TOURNAMENT_PY = Path(__file__).parent / "tournament.py"
 
-_evolution_lock = asyncio.Lock()
+_evolution_lock: asyncio.Lock | None = None
+
+
+def _get_lock() -> asyncio.Lock:
+    global _evolution_lock
+    if _evolution_lock is None:
+        _evolution_lock = asyncio.Lock()
+    return _evolution_lock
 
 
 def _get_generation_number() -> int:
@@ -30,7 +37,7 @@ def _get_generation_number() -> int:
             text=True,
             cwd=TOURNAMENT_PY.parent.parent.parent,
         )
-        lines = [l for l in result.stdout.strip().splitlines() if l]
+        lines = [line for line in result.stdout.strip().splitlines() if line]
         return len(lines)
     except Exception:
         return 0
@@ -125,6 +132,33 @@ Include only the agents listed under "Agents to improve". Example format:
 }}"""
 
 
+def _call_claude_sync(prompt: str) -> str:
+    import anthropic
+
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model=HARNESS_EVOLVER_MODEL,
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return message.content[0].text.strip()
+
+
+def _git_commit(repo_root: Path, tournament_py: Path, commit_msg: str) -> str | None:
+    try:
+        subprocess.run(["git", "add", str(tournament_py)], cwd=repo_root, check=True)
+        subprocess.run(["git", "commit", "-m", commit_msg], cwd=repo_root, check=True)
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        return None
+
+
 async def evolve_harness(client_id: str) -> dict:
     """
     Read client diagnostic context, call Claude to propose improved prompts
@@ -133,10 +167,11 @@ async def evolve_harness(client_id: str) -> dict:
     Returns a result dict with status: 'evolved' | 'skipped' | 'locked'.
     Raises ValueError on bad Claude response.
     """
-    if _evolution_lock.locked():
+    lock = _get_lock()
+    if lock.locked():
         return {"status": "locked"}
 
-    async with _evolution_lock:
+    async with lock:
         from backend.agents.feedback_loop import _profile_path, ALL_AGENTS
 
         path = _profile_path(client_id)
@@ -165,16 +200,8 @@ async def evolve_harness(client_id: str) -> dict:
         underperforming = [a for a in ALL_AGENTS if a != dominant_agent]
 
         # ── Call Claude ───────────────────────────────────────────────────────
-        import anthropic
-
         prompt = _build_context_prompt(profile, underperforming, dominant_agent, dominant_rate)
-        client = anthropic.Anthropic()
-        message = client.messages.create(
-            model=HARNESS_EVOLVER_MODEL,
-            max_tokens=4096,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = message.content[0].text.strip()
+        raw = await asyncio.to_thread(_call_claude_sync, prompt)
 
         # ── Parse JSON response ───────────────────────────────────────────────
         try:
@@ -202,27 +229,14 @@ async def evolve_harness(client_id: str) -> dict:
         TOURNAMENT_PY.write_text(source)
 
         # ── Git commit ────────────────────────────────────────────────────────
-        gen = _get_generation_number() + 1
+        gen = await asyncio.to_thread(_get_generation_number) + 1
         agent_list = ",".join(valid_proposed.keys())
         commit_msg = (
             f"harness: gen-{gen} — evolved {agent_list} "
             f"(dominant: {dominant_agent} at {dominant_rate:.0%})"
         )
-        commit_hash = None
-        try:
-            repo_root = TOURNAMENT_PY.parent.parent.parent
-            subprocess.run(["git", "add", str(TOURNAMENT_PY)], cwd=repo_root, check=True)
-            subprocess.run(["git", "commit", "-m", commit_msg], cwd=repo_root, check=True)
-            result = subprocess.run(
-                ["git", "rev-parse", "--short", "HEAD"],
-                capture_output=True,
-                text=True,
-                cwd=repo_root,
-            )
-            commit_hash = result.stdout.strip()
-        except subprocess.CalledProcessError:
-            # File is already written on disk — not fatal, return commit: null
-            pass
+        repo_root = TOURNAMENT_PY.parent.parent.parent
+        commit_hash = await asyncio.to_thread(_git_commit, repo_root, TOURNAMENT_PY, commit_msg)
 
         return {
             "status": "evolved",
