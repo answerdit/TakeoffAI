@@ -163,6 +163,12 @@ async def judge_tournament(
         from backend.agents.feedback_loop import update_client_profile
         await asyncio.to_thread(update_client_profile, client_id, winner_entry)
 
+    # ── Auto-evolve harness if one agent is dominating ────────────────────────
+    if client_id and winner_entry:
+        from backend.agents.harness_evolver import check_dominance, evolve_harness
+        if check_dominance(client_id):
+            asyncio.create_task(evolve_harness(client_id))
+
     # ── Background price verification of winning estimate ─────────────────────
     if winner_entry:
         raw_estimate = winner_entry.get("line_items_json", "{}")

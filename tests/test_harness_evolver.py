@@ -232,3 +232,72 @@ def test_evolve_harness_handles_markdown_wrapped_json(tmp_path, monkeypatch):
 
     assert result["status"] == "evolved"
     assert "FROM MARKDOWN" in fake_tourn.read_text()
+
+
+def test_judge_tournament_fires_evolution_when_dominant(tmp_path, monkeypatch):
+    """judge_tournament creates an evolution task when one agent dominates."""
+    import asyncio
+    import aiosqlite
+    import backend.agents.feedback_loop as fl
+    import backend.agents.harness_evolver as ev
+    from backend.api.main import _CREATE_TABLES
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+
+    db_path = str(tmp_path / "judge_test.db")
+    import backend.agents.judge as judge_mod
+    monkeypatch.setattr(judge_mod, "DB_PATH", db_path)
+
+    # Profile with dominant agent
+    profile = {
+        "client_id": "judge_client",
+        "winning_examples": [],
+        "agent_elo": {a: 1000 for a in fl.ALL_AGENTS},
+        "stats": {
+            "total_tournaments": 12,
+            "win_rate_by_agent": {
+                "conservative": 0.07, "balanced": 0.07, "aggressive": 0.72,
+                "historical_match": 0.07, "market_beater": 0.07,
+            },
+            "avg_winning_bid": 0.0, "avg_winning_margin": 0.0,
+            "wins_by_agent": {a: 0 for a in fl.ALL_AGENTS},
+        },
+    }
+    (tmp_path / "judge_client.json").write_text(json.dumps(profile))
+
+    async def run():
+        async with aiosqlite.connect(db_path) as db:
+            await db.executescript(_CREATE_TABLES)
+            await db.execute(
+                "INSERT INTO bid_tournaments (client_id, project_description, zip_code, status) VALUES (?,?,?,?)",
+                ("judge_client", "test project", "76801", "pending"),
+            )
+            await db.execute(
+                "INSERT INTO tournament_entries (tournament_id, agent_name, total_bid, line_items_json, won, score) VALUES (?,?,?,?,?,?)",
+                (1, "aggressive", 100000.0, '{"line_items": []}', 0, None),
+            )
+            await db.commit()
+
+        tasks_created = []
+        original_create_task = asyncio.create_task
+
+        def mock_create_task(coro, **kwargs):
+            tasks_created.append(coro.__qualname__ if hasattr(coro, '__qualname__') else str(coro))
+            # Cancel it immediately so it doesn't run
+            t = original_create_task(coro, **kwargs)
+            t.cancel()
+            return t
+
+        with patch("backend.agents.judge.asyncio.create_task", side_effect=mock_create_task):
+            with patch("backend.agents.feedback_loop.update_client_profile"):
+                from backend.agents.judge import judge_tournament
+                await judge_tournament(
+                    tournament_id=1,
+                    winner_agent_name="aggressive",
+                )
+
+        return tasks_created
+
+    tasks = asyncio.run(run())
+    # At least one task should be the evolve_harness coroutine
+    assert any("evolve_harness" in t for t in tasks)
