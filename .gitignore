@@ -44,3 +44,7 @@ logs/
 *.gsheet
 *.crdownload
 Client Estimates/
+
+# Tool/runtime artifacts
+.superpowers/
+backend/data/traces/

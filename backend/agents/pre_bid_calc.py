@@ -138,7 +138,7 @@ Please generate a detailed line-item cost estimate for this project."""
 
     response = client.messages.create(
         model="claude-sonnet-4-5",
-        max_tokens=4096,
+        max_tokens=8192,
         system=system,
         messages=[{"role": "user", "content": user_message}],
     )
