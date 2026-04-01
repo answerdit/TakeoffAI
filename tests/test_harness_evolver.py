@@ -1,5 +1,6 @@
 import asyncio
 import json
+import shutil
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
@@ -132,3 +133,102 @@ def test_check_dominance_returns_false_insufficient_data(tmp_path, monkeypatch):
     }
     (tmp_path / "c5.json").write_text(json.dumps(profile))
     assert ev.check_dominance("c5") is False
+
+
+# ── Claude call + rewrite tests ────────────────────────────────────────────────
+
+def test_evolve_harness_applies_proposed_prompts(tmp_path, monkeypatch):
+    """evolve_harness rewrites tournament.py with Claude's proposed prompt."""
+    import shutil
+    import backend.agents.feedback_loop as fl
+    import backend.agents.harness_evolver as ev
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+
+    # Point TOURNAMENT_PY at a tmp copy so real source isn't touched
+    fake_tourn = tmp_path / "tournament.py"
+    shutil.copy(ev.TOURNAMENT_PY, fake_tourn)
+    monkeypatch.setattr(ev, "TOURNAMENT_PY", fake_tourn)
+
+    profile = {
+        "client_id": "default",
+        "winning_examples": [],
+        "stats": {
+            "total_tournaments": 15,
+            "win_rate_by_agent": {
+                "conservative": 0.07, "balanced": 0.07, "aggressive": 0.72,
+                "historical_match": 0.07, "market_beater": 0.07,
+            },
+            "avg_winning_bid": 0.0, "avg_winning_margin": 0.0, "wins_by_agent": {},
+        },
+    }
+    (tmp_path / "default.json").write_text(json.dumps(profile))
+
+    mock_msg = MagicMock()
+    mock_msg.content = [MagicMock(
+        text='{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEVOLVED CONTENT\\n"}'
+    )]
+
+    with patch("backend.agents.harness_evolver._call_claude_sync") as mock_call:
+        mock_call.return_value = '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEVOLVED CONTENT\\n"}'
+        monkeypatch.setattr(ev, "_get_generation_number", lambda: 0)
+        with patch("backend.agents.harness_evolver._git_commit") as mock_git:
+            mock_git.return_value = "abc1234"
+            result = asyncio.run(ev.evolve_harness("default"))
+
+    assert result["status"] == "evolved"
+    assert "conservative" in result["evolved_agents"]
+    assert "aggressive" not in result["evolved_agents"]
+    assert result["dominant_agent"] == "aggressive"
+    assert "EVOLVED CONTENT" in fake_tourn.read_text()
+
+
+def test_evolve_harness_returns_locked_when_already_running():
+    """evolve_harness returns locked immediately if lock is held."""
+    import backend.agents.harness_evolver as ev
+
+    async def run():
+        # Acquire lock manually then call evolve_harness
+        async with ev._get_lock():
+            return await ev.evolve_harness("any_client")
+
+    result = asyncio.run(run())
+    assert result["status"] == "locked"
+
+
+def test_evolve_harness_handles_markdown_wrapped_json(tmp_path, monkeypatch):
+    """Claude sometimes wraps JSON in ```json ... ``` — parser handles it."""
+    import shutil
+    import backend.agents.feedback_loop as fl
+    import backend.agents.harness_evolver as ev
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    fake_tourn = tmp_path / "tournament.py"
+    shutil.copy(ev.TOURNAMENT_PY, fake_tourn)
+    monkeypatch.setattr(ev, "TOURNAMENT_PY", fake_tourn)
+
+    profile = {
+        "client_id": "md_client",
+        "winning_examples": [],
+        "stats": {
+            "total_tournaments": 12,
+            "win_rate_by_agent": {
+                "conservative": 0.08, "balanced": 0.08, "aggressive": 0.68,
+                "historical_match": 0.08, "market_beater": 0.08,
+            },
+            "avg_winning_bid": 0.0, "avg_winning_margin": 0.0, "wins_by_agent": {},
+        },
+    }
+    (tmp_path / "md_client.json").write_text(json.dumps(profile))
+
+    wrapped = '```json\n{"balanced": "## BIDDING PERSONALITY: BALANCED\\nFROM MARKDOWN\\n"}\n```'
+
+    with patch("backend.agents.harness_evolver._call_claude_sync") as mock_call:
+        mock_call.return_value = wrapped
+        monkeypatch.setattr(ev, "_get_generation_number", lambda: 2)
+        with patch("backend.agents.harness_evolver._git_commit") as mock_git:
+            mock_git.return_value = "def5678"
+            result = asyncio.run(ev.evolve_harness("md_client"))
+
+    assert result["status"] == "evolved"
+    assert "FROM MARKDOWN" in fake_tourn.read_text()
