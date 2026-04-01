@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.agents.feedback_loop import exclude_agent as _exclude_agent, reset_agent_history as _reset_agent_history
+from backend.agents.harness_evolver import evolve_harness as _evolve_harness, _get_lock
 from backend.agents.pre_bid_calc import run_prebid_calc
 from backend.agents.bid_to_win import run_bid_to_win
 from backend.agents.tournament import run_tournament
@@ -214,5 +215,29 @@ async def reset_agent_history_endpoint(client_id: str, agent_name: str):
     try:
         calibration = await asyncio.to_thread(_reset_agent_history, client_id, agent_name)
         return {"client_id": client_id, "agent_name": agent_name, "calibration": calibration}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+class EvolveRequest(BaseModel):
+    client_id: str = Field(default="default", description="Client ID to use as diagnostic context")
+
+
+@router.post("/tournament/evolve")
+async def evolve_harness_endpoint(req: EvolveRequest):
+    """
+    Manually trigger harness evolution. Analyzes client tournament history,
+    evolves underperforming agent prompts via Claude, and commits to git.
+    Returns 423 if evolution is already in progress.
+    """
+    if _get_lock().locked():
+        raise HTTPException(status_code=423, detail="Evolution already in progress")
+    try:
+        result = await _evolve_harness(req.client_id)
+        if result.get("status") == "locked":
+            raise HTTPException(status_code=423, detail="Evolution already in progress")
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

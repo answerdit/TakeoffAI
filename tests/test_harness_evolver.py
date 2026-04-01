@@ -301,3 +301,102 @@ def test_judge_tournament_fires_evolution_when_dominant(tmp_path, monkeypatch):
     tasks = asyncio.run(run())
     # At least one task should be the evolve_harness coroutine
     assert any("evolve_harness" in t for t in tasks)
+
+
+# ── Endpoint tests ─────────────────────────────────────────────────────────────
+
+def test_post_evolve_returns_skipped_when_no_dominance(tmp_path, monkeypatch):
+    """POST /api/tournament/evolve returns skipped when win rates are balanced."""
+    import backend.agents.feedback_loop as fl
+    import backend.agents.harness_evolver as ev
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.api.routes import router
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+
+    profile = {
+        "client_id": "balanced_client",
+        "winning_examples": [],
+        "stats": {
+            "total_tournaments": 20,
+            "win_rate_by_agent": {
+                "conservative": 0.22, "balanced": 0.20, "aggressive": 0.20,
+                "historical_match": 0.19, "market_beater": 0.19,
+            },
+            "avg_winning_bid": 0.0, "avg_winning_margin": 0.0, "wins_by_agent": {},
+        },
+    }
+    (tmp_path / "balanced_client.json").write_text(json.dumps(profile))
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+    with TestClient(app) as c:
+        resp = c.post("/api/tournament/evolve", json={"client_id": "balanced_client"})
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "skipped"
+
+
+def test_post_evolve_returns_423_when_locked(monkeypatch):
+    """POST /api/tournament/evolve returns 423 when evolution is in progress."""
+    import backend.agents.harness_evolver as ev
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.api.routes import router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+
+    async def run_while_locked():
+        async with ev._get_lock():
+            with TestClient(app) as c:
+                return c.post("/api/tournament/evolve", json={"client_id": "any"})
+
+    resp = asyncio.run(run_while_locked())
+    assert resp.status_code == 423
+
+
+def test_post_evolve_returns_evolved_on_success(tmp_path, monkeypatch):
+    """POST /api/tournament/evolve returns evolved result when Claude succeeds."""
+    import shutil
+    import backend.agents.feedback_loop as fl
+    import backend.agents.harness_evolver as ev
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.api.routes import router
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    fake_tourn = tmp_path / "tournament.py"
+    shutil.copy(ev.TOURNAMENT_PY, fake_tourn)
+    monkeypatch.setattr(ev, "TOURNAMENT_PY", fake_tourn)
+
+    profile = {
+        "client_id": "evolve_client",
+        "winning_examples": [],
+        "stats": {
+            "total_tournaments": 15,
+            "win_rate_by_agent": {
+                "conservative": 0.07, "balanced": 0.07, "aggressive": 0.72,
+                "historical_match": 0.07, "market_beater": 0.07,
+            },
+            "avg_winning_bid": 0.0, "avg_winning_margin": 0.0, "wins_by_agent": {},
+        },
+    }
+    (tmp_path / "evolve_client.json").write_text(json.dumps(profile))
+
+    with patch("backend.agents.harness_evolver._call_claude_sync") as mock_call:
+        mock_call.return_value = '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEP TEST\\n"}'
+        monkeypatch.setattr(ev, "_get_generation_number", lambda: 1)
+        with patch("backend.agents.harness_evolver._git_commit") as mock_git:
+            mock_git.return_value = "fff9999"
+            app = FastAPI()
+            app.include_router(router, prefix="/api")
+            with TestClient(app) as c:
+                resp = c.post("/api/tournament/evolve", json={"client_id": "evolve_client"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "evolved"
+    assert "conservative" in data["evolved_agents"]
+    assert data["generation"] == 2
