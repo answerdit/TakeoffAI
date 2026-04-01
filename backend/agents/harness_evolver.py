@@ -15,6 +15,7 @@ from pathlib import Path
 MIN_TOURNAMENTS = 10
 DOMINANCE_THRESHOLD = 0.60
 HARNESS_EVOLVER_MODEL = os.getenv("HARNESS_EVOLVER_MODEL", "claude-sonnet-4-6")
+HARNESS_EVOLVER_MAX_TOOL_CALLS = int(os.getenv("HARNESS_EVOLVER_MAX_TOOL_CALLS", "30"))
 
 TOURNAMENT_PY = Path(__file__).parent / "tournament.py"
 
@@ -157,6 +158,100 @@ def _git_commit(repo_root: Path, tournament_py: Path, commit_msg: str) -> str | 
         return result.stdout.strip()
     except subprocess.CalledProcessError:
         return None
+
+
+# ── Agentic proposer tools ────────────────────────────────────────────────────
+
+_TOOLS = [
+    {
+        "name": "list_traces",
+        "description": (
+            "List available trace files for a client. Returns file paths with metadata "
+            "(agent_name, tournament_id, total_bid, timestamp). Use to find which "
+            "tournaments to investigate."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string"},
+                "agent_name": {
+                    "type": "string",
+                    "description": "Filter by agent name (optional)",
+                },
+                "limit": {"type": "integer", "default": 50},
+            },
+            "required": ["client_id"],
+        },
+    },
+    {
+        "name": "read_file",
+        "description": (
+            "Read a file from the data directory. Use to read trace files or the client "
+            "profile. Path must be under backend/data/."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Absolute path. Must be under backend/data/.",
+                }
+            },
+            "required": ["path"],
+        },
+    },
+]
+
+
+def _handle_list_traces(
+    data_dir: Path,
+    client_id: str,
+    agent_name: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Return metadata list for trace files matching client_id (and optionally agent_name)."""
+    pattern = f"*/{agent_name or '*'}.json"
+    files = sorted(
+        data_dir.glob(pattern),
+        key=lambda p: int(p.parent.name) if p.parent.name.isdigit() else 0,
+        reverse=True,
+    )
+    results = []
+    for f in files:
+        try:
+            meta = json.loads(f.read_text())
+            if meta.get("client_id") != client_id:
+                continue
+            results.append({
+                "path": str(f),
+                "agent_name": meta.get("agent_name"),
+                "tournament_id": meta.get("tournament_id"),
+                "total_bid": meta.get("estimate", {}).get("total_bid"),
+                "timestamp": meta.get("timestamp"),
+            })
+            if len(results) >= limit:
+                break
+        except Exception:
+            continue
+    return results
+
+
+def _handle_read_file(data_dir: Path, path: str) -> dict:
+    """Read a file inside data_dir. Returns error dict if path is outside or missing."""
+    try:
+        target = Path(path).resolve()
+        allowed = data_dir.resolve()
+        if not str(target).startswith(str(allowed)):
+            return {"error": f"Access denied: path must be under {allowed}"}
+        content = target.read_text()
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return {"content": content}
+    except FileNotFoundError:
+        return {"error": f"File not found: {path}"}
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 async def evolve_harness(client_id: str) -> dict:

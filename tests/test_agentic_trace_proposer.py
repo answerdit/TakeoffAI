@@ -130,3 +130,101 @@ def test_trace_write_failure_does_not_break_tournament(tmp_path, monkeypatch):
 
     count = asyncio.run(run())
     assert count == 1  # DB write succeeded despite trace failure
+
+
+# ── Tool handler tests ─────────────────────────────────────────────────────────
+
+def test_list_traces_returns_files_for_client(tmp_path):
+    """_handle_list_traces returns trace metadata for matching client_id."""
+    import backend.agents.harness_evolver as ev
+
+    for tid, agent, cid in [(1, "aggressive", "client_a"), (1, "conservative", "client_a"), (2, "balanced", "client_b")]:
+        d = tmp_path / str(tid)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{agent}.json").write_text(json.dumps({
+            "tournament_id": tid,
+            "agent_name": agent,
+            "client_id": cid,
+            "timestamp": "2026-03-31T10:00:00+00:00",
+            "estimate": {"total_bid": 100000.0},
+        }))
+
+    results = ev._handle_list_traces(tmp_path, client_id="client_a")
+    assert len(results) == 2
+    agent_names = {r["agent_name"] for r in results}
+    assert agent_names == {"aggressive", "conservative"}
+    for r in results:
+        assert "path" in r
+        assert "tournament_id" in r
+        assert "total_bid" in r
+        assert "timestamp" in r
+
+
+def test_list_traces_filters_by_agent_name(tmp_path):
+    """_handle_list_traces filters to a specific agent when agent_name is given."""
+    import backend.agents.harness_evolver as ev
+
+    for agent in ["aggressive", "conservative", "balanced"]:
+        d = tmp_path / "5"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{agent}.json").write_text(json.dumps({
+            "tournament_id": 5,
+            "agent_name": agent,
+            "client_id": "c1",
+            "timestamp": "2026-03-31T10:00:00+00:00",
+            "estimate": {"total_bid": 50000.0},
+        }))
+
+    results = ev._handle_list_traces(tmp_path, client_id="c1", agent_name="aggressive")
+    assert len(results) == 1
+    assert results[0]["agent_name"] == "aggressive"
+
+
+def test_list_traces_respects_limit(tmp_path):
+    """_handle_list_traces returns at most `limit` results."""
+    import backend.agents.harness_evolver as ev
+
+    for i in range(10):
+        d = tmp_path / str(i)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "aggressive.json").write_text(json.dumps({
+            "tournament_id": i,
+            "agent_name": "aggressive",
+            "client_id": "c1",
+            "timestamp": "2026-03-31T10:00:00+00:00",
+            "estimate": {"total_bid": float(i * 1000)},
+        }))
+
+    results = ev._handle_list_traces(tmp_path, client_id="c1", limit=3)
+    assert len(results) == 3
+
+
+def test_read_file_returns_content_within_data_dir(tmp_path):
+    """_handle_read_file returns parsed JSON for files inside data_dir."""
+    import backend.agents.harness_evolver as ev
+
+    f = tmp_path / "test.json"
+    f.write_text(json.dumps({"key": "value"}))
+
+    result = ev._handle_read_file(tmp_path, str(f))
+    assert result == {"key": "value"}
+
+
+def test_read_file_blocks_paths_outside_data_dir(tmp_path):
+    """_handle_read_file returns error dict for paths outside data_dir."""
+    import backend.agents.harness_evolver as ev
+
+    outside = tmp_path.parent / "secrets.txt"
+    outside.write_text("secret")
+
+    result = ev._handle_read_file(tmp_path, str(outside))
+    assert "error" in result
+    assert "Access denied" in result["error"]
+
+
+def test_read_file_returns_error_for_missing_file(tmp_path):
+    """_handle_read_file returns error dict when file does not exist."""
+    import backend.agents.harness_evolver as ev
+
+    result = ev._handle_read_file(tmp_path, str(tmp_path / "nonexistent.json"))
+    assert "error" in result
