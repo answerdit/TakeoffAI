@@ -84,7 +84,7 @@ All tasks dispatched in one `asyncio.gather` call — fully parallel.
 |------|-------|-----------|
 | Low | 0.3 | Deterministic, consistent — favors the most likely estimate |
 | Mid | 0.7 | Current default — balanced exploration |
-| High | 1.2 | Creative, high-variance — surfaces edge-case interpretations |
+| High | 1.0 | Max allowed by Anthropic API — highest variance, surfaces edge-case interpretations |
 
 ---
 

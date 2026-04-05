@@ -354,7 +354,7 @@ def test_collapse_picks_median_entry():
     entries = [
         make_agent_result("conservative", 90_000.0, temperature=0.3, sample_index=0),
         make_agent_result("conservative", 100_000.0, temperature=0.7, sample_index=0),
-        make_agent_result("conservative", 110_000.0, temperature=1.2, sample_index=0),
+        make_agent_result("conservative", 110_000.0, temperature=1.0, sample_index=0),
     ]
     result = _collapse_to_consensus(entries)
     assert len(result) == 1
@@ -613,7 +613,7 @@ async def test_run_tournament_entries_have_temperature(tmp_path, monkeypatch):
         )
 
     temps = {e.temperature for e in result.entries}
-    assert temps == {0.3, 0.7, 1.2}
+    assert temps == {0.3, 0.7, 1.0}
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -678,7 +678,7 @@ async def _run_single_agent(
 In `backend/agents/tournament.py`, add `TEMPERATURES` constant after `PERSONALITY_PROMPTS`:
 
 ```python
-TEMPERATURES: list[float] = [0.3, 0.7, 1.2]
+TEMPERATURES: list[float] = [0.3, 0.7, 1.0]
 ```
 
 Update the `run_tournament` signature and loop:
