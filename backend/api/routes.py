@@ -188,7 +188,7 @@ async def tournament_get(tournament_id: int):
             tournament = dict(row)
 
             async with db.execute(
-                "SELECT id, agent_name, total_bid, won, score, created_at FROM tournament_entries WHERE tournament_id = ?",
+                "SELECT id, agent_name, total_bid, won, score, temperature, is_consensus, created_at FROM tournament_entries WHERE tournament_id = ?",
                 (tournament_id,),
             ) as cur:
                 entries = [dict(r) for r in await cur.fetchall()]
