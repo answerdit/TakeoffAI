@@ -7,12 +7,13 @@ Outputs: line-item estimate with materials, labor, burden, overhead, margin, tot
 """
 
 import csv
-import json
 from pathlib import Path
 
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 
-client = Anthropic()
+from backend.agents.utils import call_with_json_retry, parse_llm_json
+
+client = AsyncAnthropic()
 
 # ── Load seed material costs once at import time ─────────────────────────────
 
@@ -88,18 +89,8 @@ Always return valid JSON in this exact format — no markdown fences, no extra t
 
 # ── Agent entry point ─────────────────────────────────────────────────────────
 
-def _parse_response(raw: str) -> dict:
-    """Strip markdown fences and parse JSON from an LLM response."""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-    return json.loads(raw)
 
-
-def run_prebid_calc(
+async def run_prebid_calc(
     description: str,
     zip_code: str,
     trade_type: str = "general",
@@ -107,18 +98,19 @@ def run_prebid_calc(
     margin_pct: float = 12.0,
 ) -> dict:
     """Run the PreBidCalc agent and return a structured estimate."""
-    return run_prebid_calc_with_modifier(
+    return await run_prebid_calc_with_modifier(
         description, zip_code, trade_type, overhead_pct, margin_pct, system_prompt_modifier=None
     )
 
 
-def run_prebid_calc_with_modifier(
+async def run_prebid_calc_with_modifier(
     description: str,
     zip_code: str,
     trade_type: str = "general",
     overhead_pct: float = 20.0,
     margin_pct: float = 12.0,
     system_prompt_modifier: str | None = None,
+    temperature: float = 0.7,
 ) -> dict:
     """
     Run PreBidCalc with an optional personality modifier appended to the system prompt.
@@ -136,11 +128,27 @@ Target Margin %: {margin_pct}
 
 Please generate a detailed line-item cost estimate for this project."""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=4096,
+    from backend.config import settings
+    return await call_with_json_retry(
+        client,
+        model=settings.claude_model,
+        max_tokens=8192,
         system=system,
-        messages=[{"role": "user", "content": user_message}],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": system,
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                    {
+                        "type": "text",
+                        "text": user_message,
+                    },
+                ],
+            }
+        ],
+        temperature=temperature,
     )
-
-    return _parse_response(response.content[0].text)
