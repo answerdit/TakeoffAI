@@ -17,6 +17,8 @@ DB_PATH = settings.db_path
 
 # ── Personality system-prompt modifiers ───────────────────────────────────────
 
+TEMPERATURES: list[float] = [0.3, 0.7, 1.0]
+
 PERSONALITY_PROMPTS: dict[str, str] = {
     "conservative": """## BIDDING PERSONALITY: CONSERVATIVE
 You are pricing this job to protect margin and avoid cost overruns.
@@ -91,6 +93,8 @@ async def _run_single_agent(
     overhead_pct: float,
     margin_pct: float,
     system_prompt_modifier: str,
+    temperature: float = 0.7,
+    sample_index: int = 0,
 ) -> AgentResult:
     """Execute one PreBidCalc call directly (async)."""
     try:
@@ -101,6 +105,7 @@ async def _run_single_agent(
             overhead_pct,
             margin_pct,
             system_prompt_modifier,
+            temperature=temperature,
         )
         return AgentResult(
             agent_name=agent_name,
@@ -108,6 +113,8 @@ async def _run_single_agent(
             total_bid=float(estimate.get("total_bid", 0.0)),
             margin_pct=float(estimate.get("margin_pct", margin_pct)),
             confidence=estimate.get("confidence", "medium"),
+            temperature=temperature,
+            sample_index=sample_index,
         )
     except Exception as exc:
         return AgentResult(
@@ -116,6 +123,8 @@ async def _run_single_agent(
             total_bid=0.0,
             margin_pct=0.0,
             confidence="low",
+            temperature=temperature,
+            sample_index=sample_index,
             error=str(exc),
         )
 
@@ -168,17 +177,23 @@ async def _save_entries(
     db: aiosqlite.Connection,
     tournament_id: int,
     results: list[AgentResult],
+    consensus_keys: set[tuple],
 ) -> None:
     for result in results:
+        is_consensus = 1 if (
+            result.agent_name, result.total_bid, result.temperature, result.sample_index
+        ) in consensus_keys else 0
         await db.execute(
             """INSERT INTO tournament_entries
-               (tournament_id, agent_name, total_bid, line_items_json, won, score)
-               VALUES (?, ?, ?, ?, 0, NULL)""",
+               (tournament_id, agent_name, total_bid, line_items_json, won, score, temperature, is_consensus)
+               VALUES (?, ?, ?, ?, 0, NULL, ?, ?)""",
             (
                 tournament_id,
                 result.agent_name,
                 result.total_bid,
                 json.dumps(result.estimate),
+                result.temperature,
+                is_consensus,
             ),
         )
     await db.commit()
@@ -194,12 +209,17 @@ async def run_tournament(
     margin_pct: float = 12.0,
     client_id: Optional[str] = None,
     n_agents: int = 5,
+    n_samples: int = 2,
 ) -> TournamentResult:
     """
-    Run PreBidCalc N times in parallel with different bidding personalities.
+    Run PreBidCalc across a personality × temperature × sample grid in parallel.
 
-    Returns a TournamentResult containing all AgentResult entries and the
-    persisted tournament_id for subsequent judging.
+    Grid: n_agents personalities × 3 temperature tiers × n_samples repeats.
+    Default (n_agents=5, n_samples=2): 30 parallel API calls.
+
+    Returns a TournamentResult with:
+    - entries: all raw results from the grid
+    - consensus_entries: one median-collapsed entry per personality
     """
     personalities = list(PERSONALITY_PROMPTS.keys())[:n_agents]
 
@@ -217,21 +237,30 @@ async def run_tournament(
         modifier = PERSONALITY_PROMPTS[name]
         if name == "historical_match" and client_context:
             modifier = modifier + f"\n\n{client_context}"
-        tasks.append(
-            _run_single_agent(
-                name, description, zip_code, trade_type, overhead_pct, margin_pct, modifier
-            )
-        )
+        for temp in TEMPERATURES:
+            for sample_idx in range(n_samples):
+                tasks.append(
+                    _run_single_agent(
+                        name, description, zip_code, trade_type,
+                        overhead_pct, margin_pct, modifier,
+                        temperature=temp,
+                        sample_index=sample_idx,
+                    )
+                )
 
     results: list[AgentResult] = list(await asyncio.gather(*tasks))
 
-    # Drop failed / zero-bid entries if at least one valid result remains
-    valid_results = [e for e in results if e.total_bid and e.total_bid > 0]
-    if valid_results:
-        results = valid_results
+    consensus = _collapse_to_consensus(results)
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    # Build a key set for marking consensus entries in the DB
+    consensus_keys = {(e.agent_name, e.total_bid, e.temperature, e.sample_index) for e in consensus}
+
+    async with aiosqlite.connect(settings.db_path) as db:
         tournament_id = await _save_tournament(db, client_id, description, zip_code)
-        await _save_entries(db, tournament_id, results)
+        await _save_entries(db, tournament_id, results, consensus_keys)
 
-    return TournamentResult(tournament_id=tournament_id, entries=results)
+    return TournamentResult(
+        tournament_id=tournament_id,
+        entries=results,
+        consensus_entries=consensus,
+    )

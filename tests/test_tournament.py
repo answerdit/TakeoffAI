@@ -1,6 +1,8 @@
 """Tests for tournament engine — data structures, collapse logic, grid expansion."""
 
 import pytest
+import asyncio
+from unittest.mock import AsyncMock, patch
 from backend.agents.tournament import AgentResult, TournamentResult, _collapse_to_consensus
 
 
@@ -92,3 +94,129 @@ def test_collapse_personality_with_all_errors_excluded():
     result = _collapse_to_consensus(entries)
     assert len(result) == 1
     assert result[0].agent_name == "balanced"
+
+
+FAKE_ESTIMATE = {
+    "project_summary": "test",
+    "location": "75001",
+    "line_items": [],
+    "subtotal": 100_000.0,
+    "overhead_pct": 20,
+    "overhead_amount": 20_000.0,
+    "margin_pct": 12,
+    "margin_amount": 14_400.0,
+    "total_bid": 134_400.0,
+    "confidence": "medium",
+    "notes": "",
+}
+
+
+@pytest.mark.anyio
+async def test_run_tournament_grid_shape(tmp_path, monkeypatch):
+    """With n_samples=1, run_tournament should produce 5×3 = 15 raw entries."""
+    monkeypatch.setattr(
+        "backend.agents.tournament.settings.db_path",
+        str(tmp_path / "test.db"),
+    )
+
+    import aiosqlite
+    from backend.api.main import _CREATE_TABLES
+    async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
+        await db.executescript(_CREATE_TABLES)
+        for sql in [
+            "ALTER TABLE tournament_entries ADD COLUMN temperature REAL DEFAULT 0.7",
+            "ALTER TABLE tournament_entries ADD COLUMN is_consensus INTEGER DEFAULT 0",
+        ]:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
+        await db.commit()
+
+    with patch(
+        "backend.agents.tournament.run_prebid_calc_with_modifier",
+        new=AsyncMock(return_value=FAKE_ESTIMATE),
+    ):
+        from backend.agents.tournament import run_tournament
+        result = await run_tournament(
+            description="Build a 10,000 sqft office building in Dallas TX",
+            zip_code="75001",
+            n_samples=1,
+        )
+
+    assert len(result.entries) == 15  # 5 personalities × 3 temps × 1 sample
+    assert len(result.consensus_entries) == 5  # one per personality
+
+
+@pytest.mark.anyio
+async def test_run_tournament_n_samples_2(tmp_path, monkeypatch):
+    """Default n_samples=2 produces 5×3×2 = 30 raw entries."""
+    monkeypatch.setattr(
+        "backend.agents.tournament.settings.db_path",
+        str(tmp_path / "test.db"),
+    )
+
+    import aiosqlite
+    from backend.api.main import _CREATE_TABLES
+    async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
+        await db.executescript(_CREATE_TABLES)
+        for sql in [
+            "ALTER TABLE tournament_entries ADD COLUMN temperature REAL DEFAULT 0.7",
+            "ALTER TABLE tournament_entries ADD COLUMN is_consensus INTEGER DEFAULT 0",
+        ]:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
+        await db.commit()
+
+    with patch(
+        "backend.agents.tournament.run_prebid_calc_with_modifier",
+        new=AsyncMock(return_value=FAKE_ESTIMATE),
+    ):
+        from backend.agents.tournament import run_tournament
+        result = await run_tournament(
+            description="Build a 10,000 sqft office building in Dallas TX",
+            zip_code="75001",
+            n_samples=2,
+        )
+
+    assert len(result.entries) == 30
+    assert len(result.consensus_entries) == 5
+
+
+@pytest.mark.anyio
+async def test_run_tournament_entries_have_temperature(tmp_path, monkeypatch):
+    """Each raw entry must carry the temperature it was called with."""
+    monkeypatch.setattr(
+        "backend.agents.tournament.settings.db_path",
+        str(tmp_path / "test.db"),
+    )
+
+    import aiosqlite
+    from backend.api.main import _CREATE_TABLES
+    async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
+        await db.executescript(_CREATE_TABLES)
+        for sql in [
+            "ALTER TABLE tournament_entries ADD COLUMN temperature REAL DEFAULT 0.7",
+            "ALTER TABLE tournament_entries ADD COLUMN is_consensus INTEGER DEFAULT 0",
+        ]:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
+        await db.commit()
+
+    with patch(
+        "backend.agents.tournament.run_prebid_calc_with_modifier",
+        new=AsyncMock(return_value=FAKE_ESTIMATE),
+    ):
+        from backend.agents.tournament import run_tournament
+        result = await run_tournament(
+            description="Build a 10,000 sqft office building in Dallas TX",
+            zip_code="75001",
+            n_samples=1,
+        )
+
+    temps = {e.temperature for e in result.entries}
+    assert temps == {0.3, 0.7, 1.0}
