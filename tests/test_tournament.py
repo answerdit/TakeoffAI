@@ -1,7 +1,6 @@
 """Tests for tournament engine — data structures, collapse logic, grid expansion."""
 
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, patch
 from backend.agents.tournament import AgentResult, TournamentResult, _collapse_to_consensus
 

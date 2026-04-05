@@ -1,6 +1,7 @@
 """
 Tournament Agent — TakeoffAI
-Runs PreBidCalc N times in parallel, each with a different bidding personality.
+Runs PreBidCalc across a personality × temperature × sample grid in parallel,
+collapsing results to a median-consensus entry per personality.
 """
 
 import asyncio
@@ -12,8 +13,6 @@ import aiosqlite
 
 from backend.agents.pre_bid_calc import run_prebid_calc_with_modifier
 from backend.config import settings
-
-DB_PATH = settings.db_path
 
 # ── Personality system-prompt modifiers ───────────────────────────────────────
 
