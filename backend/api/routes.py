@@ -4,11 +4,13 @@ Thin HTTP layer; delegates all logic to agent modules.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
 import aiosqlite
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from backend.agents.pre_bid_calc import run_prebid_calc
@@ -17,9 +19,23 @@ from backend.agents.tournament import run_tournament
 from backend.agents.judge import judge_tournament
 from backend.config import settings
 
-DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
+DB_PATH = settings.db_path
 
-router = APIRouter()
+# ── API key authentication ────────────────────────────────────────────────────
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def verify_api_key(key: str = Security(_api_key_header)):
+    if settings.api_key and key != settings.api_key:
+        raise HTTPException(status_code=403, detail="Invalid or missing API key")
+
+
+# ── Path traversal guard for client profiles ─────────────────────────────────
+
+_PROFILES_BASE = (Path(__file__).parent.parent / "data" / "client_profiles").resolve()
+
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 # ── Request / Response models ────────────────────────────────────────────────
@@ -51,7 +67,7 @@ class BidStrategyRequest(BaseModel):
 async def estimate(req: EstimateRequest):
     """Run PreBidCalc agent — returns a line-item cost estimate."""
     try:
-        result = run_prebid_calc(
+        result = await run_prebid_calc(
             description=req.description,
             zip_code=req.zip_code,
             trade_type=req.trade_type,
@@ -67,7 +83,7 @@ async def estimate(req: EstimateRequest):
 async def bid_strategy(req: BidStrategyRequest):
     """Run BidToWin agent — returns bid scenarios and win strategy."""
     try:
-        result = run_bid_to_win(
+        result = await run_bid_to_win(
             estimate=req.estimate,
             rfp_text=req.rfp_text,
             project_type=req.project_type,
@@ -88,6 +104,7 @@ class TournamentRunRequest(BaseModel):
     margin_pct: float = Field(default=None, ge=0, le=100, description="Target margin %")
     client_id: Optional[str] = Field(default=None, description="Client ID for profile-aware bidding")
     n_agents: int = Field(default=5, ge=1, le=5, description="Number of agent personalities to run")
+    n_samples: int = Field(default=2, ge=1, le=5, description="Samples per personality×temperature cell (1–5)")
 
     def resolved_overhead(self) -> float:
         return self.overhead_pct if self.overhead_pct is not None else settings.default_overhead_pct
@@ -115,20 +132,25 @@ async def tournament_run(req: TournamentRunRequest):
             margin_pct=req.resolved_margin(),
             client_id=req.client_id,
             n_agents=req.n_agents,
+            n_samples=req.n_samples,
         )
+
+        def _serialize_entry(e):
+            return {
+                "agent_name": e.agent_name,
+                "total_bid": e.total_bid,
+                "margin_pct": e.margin_pct,
+                "confidence": e.confidence,
+                "temperature": e.temperature,
+                "sample_index": e.sample_index,
+                "estimate": e.estimate,
+                "error": e.error,
+            }
+
         return {
             "tournament_id": result.tournament_id,
-            "entries": [
-                {
-                    "agent_name": e.agent_name,
-                    "total_bid": e.total_bid,
-                    "margin_pct": e.margin_pct,
-                    "confidence": e.confidence,
-                    "estimate": e.estimate,
-                    "error": e.error,
-                }
-                for e in result.entries
-            ],
+            "entries": [_serialize_entry(e) for e in result.entries],
+            "consensus_entries": [_serialize_entry(e) for e in result.consensus_entries],
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -182,7 +204,11 @@ async def tournament_get(tournament_id: int):
 async def client_profile(client_id: str):
     """Return client profile including ELO scores and win statistics."""
     try:
-        profile_path = Path(__file__).parent.parent / "data" / "client_profiles" / f"{client_id}.json"
+        if not re.match(r'^[a-zA-Z0-9_\-]+$', client_id):
+            raise HTTPException(status_code=400, detail="Invalid client_id format")
+        profile_path = (_PROFILES_BASE / f"{client_id}.json").resolve()
+        if not str(profile_path).startswith(str(_PROFILES_BASE)):
+            raise HTTPException(status_code=400, detail="Invalid client_id")
         if not profile_path.exists():
             raise HTTPException(status_code=404, detail=f"Client profile '{client_id}' not found")
         return json.loads(profile_path.read_text())
