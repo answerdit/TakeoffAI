@@ -6,14 +6,14 @@ Runs PreBidCalc N times in parallel, each with a different bidding personality.
 import asyncio
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 
 import aiosqlite
 
 from backend.agents.pre_bid_calc import run_prebid_calc_with_modifier
+from backend.config import settings
 
-DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
+DB_PATH = settings.db_path
 
 # ── Personality system-prompt modifiers ───────────────────────────────────────
 
@@ -69,6 +69,8 @@ class AgentResult:
     total_bid: float
     margin_pct: float
     confidence: str
+    temperature: float = 0.7
+    sample_index: int = 0
     error: Optional[str] = None
 
 
@@ -76,6 +78,7 @@ class AgentResult:
 class TournamentResult:
     tournament_id: int
     entries: list[AgentResult] = field(default_factory=list)
+    consensus_entries: list[AgentResult] = field(default_factory=list)
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -89,10 +92,9 @@ async def _run_single_agent(
     margin_pct: float,
     system_prompt_modifier: str,
 ) -> AgentResult:
-    """Execute one PreBidCalc call in a thread pool (sync → async)."""
+    """Execute one PreBidCalc call directly (async)."""
     try:
-        estimate = await asyncio.to_thread(
-            run_prebid_calc_with_modifier,
+        estimate = await run_prebid_calc_with_modifier(
             description,
             zip_code,
             trade_type,
@@ -193,6 +195,11 @@ async def run_tournament(
         )
 
     results: list[AgentResult] = list(await asyncio.gather(*tasks))
+
+    # Drop failed / zero-bid entries if at least one valid result remains
+    valid_results = [e for e in results if e.total_bid and e.total_bid > 0]
+    if valid_results:
+        results = valid_results
 
     async with aiosqlite.connect(DB_PATH) as db:
         tournament_id = await _save_tournament(db, client_id, description, zip_code)
