@@ -120,6 +120,35 @@ async def _run_single_agent(
         )
 
 
+def _collapse_to_consensus(results: list[AgentResult]) -> list[AgentResult]:
+    """
+    Collapse a flat list of AgentResults (from the personality×temperature×sample grid)
+    into one consensus AgentResult per personality.
+
+    Strategy: for each personality, take the entry whose total_bid is closest to
+    the group median. Entries with errors or zero bids are excluded before collapsing.
+    Personalities where all entries are invalid are omitted from the output.
+    """
+    from collections import defaultdict
+
+    groups: dict[str, list[AgentResult]] = defaultdict(list)
+    for r in results:
+        if not r.error and r.total_bid > 0:
+            groups[r.agent_name].append(r)
+
+    consensus: list[AgentResult] = []
+    for name, group in groups.items():
+        bids = sorted(r.total_bid for r in group)
+        n = len(bids)
+        if n == 0:
+            continue
+        median_bid = bids[n // 2] if n % 2 == 1 else (bids[n // 2 - 1] + bids[n // 2]) / 2
+        closest = min(group, key=lambda r: abs(r.total_bid - median_bid))
+        consensus.append(closest)
+
+    return consensus
+
+
 async def _save_tournament(
     db: aiosqlite.Connection,
     client_id: Optional[str],
