@@ -4,6 +4,7 @@ Endpoints for price audit, review queue, on-demand verification, and calibration
 """
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
@@ -55,7 +56,8 @@ async def verify_estimate(req: VerifyEstimateRequest):
         )
         return records
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("verify_estimate failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @verification_router.get("/verify/audit")
@@ -99,7 +101,8 @@ async def list_audit(
                 rows = [dict(r) for r in await cur.fetchall()]
         return rows
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("list_audit failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @verification_router.get("/verify/queue")
@@ -122,7 +125,8 @@ async def list_queue(status: Optional[str] = "pending", limit: int = 100):
                     rows = [dict(r) for r in await cur.fetchall()]
         return rows
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("list_queue failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @verification_router.patch("/verify/queue/{queue_id}")
@@ -181,7 +185,8 @@ async def resolve_queue_item(queue_id: int, req: QueueResolveRequest):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("resolve_queue_item failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @verification_router.post("/verify/outcome")
@@ -205,7 +210,8 @@ async def submit_outcome(req: OutcomeRequest):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("submit_outcome failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @verification_router.get("/verify/accuracy/{client_id}")
@@ -218,7 +224,8 @@ async def get_accuracy(client_id: str):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("get_accuracy failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @verification_router.post("/verify/run")
@@ -228,4 +235,5 @@ async def run_verification():
         result = await run_verification_batch()
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("run_verification failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc

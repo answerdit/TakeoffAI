@@ -5,6 +5,7 @@ Thin HTTP layer; delegates all logic to agent modules.
 
 import asyncio
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -83,7 +84,8 @@ async def estimate(req: EstimateRequest):
         )
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("estimate failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.post("/bid/strategy")
@@ -98,7 +100,8 @@ async def bid_strategy(req: BidStrategyRequest):
         )
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("bid_strategy failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 # ── Tournament endpoints ──────────────────────────────────────────────────────
@@ -160,7 +163,8 @@ async def tournament_run(req: TournamentRunRequest):
             "consensus_entries": [_serialize_entry(e) for e in result.consensus_entries],
         }
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("tournament_run failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.post("/tournament/judge")
@@ -177,7 +181,8 @@ async def tournament_judge(req: TournamentJudgeRequest):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("tournament_judge failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.get("/tournament/{tournament_id}")
@@ -204,7 +209,8 @@ async def tournament_get(tournament_id: int):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("tournament_get failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.get("/client/{client_id}/profile")
@@ -222,7 +228,8 @@ async def client_profile(client_id: str):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("client_profile failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 class ExcludeAgentRequest(BaseModel):
@@ -236,7 +243,8 @@ async def exclude_agent_endpoint(client_id: str, req: ExcludeAgentRequest):
         profile = await asyncio.to_thread(_exclude_agent, client_id, req.agent_name)
         return {"client_id": client_id, "excluded_agents": profile.get("excluded_agents", [])}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("exclude_agent failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.delete("/client/{client_id}/agent-history/{agent_name}")
@@ -246,7 +254,8 @@ async def reset_agent_history_endpoint(client_id: str, agent_name: str):
         calibration = await asyncio.to_thread(_reset_agent_history, client_id, agent_name)
         return {"client_id": client_id, "agent_name": agent_name, "calibration": calibration}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("reset_agent_history failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 class EvolveRequest(BaseModel):
@@ -268,6 +277,8 @@ async def evolve_harness_endpoint(req: EvolveRequest):
             raise HTTPException(status_code=423, detail="Evolution already in progress")
         return result
     except ValueError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("evolve_harness failed (ValueError)")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("evolve_harness failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc

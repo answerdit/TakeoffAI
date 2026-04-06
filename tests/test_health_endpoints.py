@@ -52,7 +52,7 @@ def test_post_verify_run_returns_500_on_error(client):
                new=AsyncMock(side_effect=RuntimeError("network timeout"))):
         resp = client.post("/api/verify/run")
     assert resp.status_code == 500
-    assert "network timeout" in resp.json().get("detail", "")
+    assert resp.json()["detail"] == "Internal server error"
 
 
 import asyncio

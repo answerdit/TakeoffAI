@@ -5,6 +5,7 @@ Thin HTTP layer; parsing and persistence delegated to helpers below.
 """
 
 import io
+import logging
 from typing import Optional
 
 import pandas as pd
@@ -163,7 +164,8 @@ async def upload_csv(
     try:
         return _import_summary(client_id, bids, errors)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("upload_csv failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @upload_router.post("/bids/excel")
@@ -190,7 +192,8 @@ async def upload_excel(
     try:
         return _import_summary(client_id, bids, errors)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("upload_excel failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 class ManualBidRecord(BaseModel):
@@ -234,7 +237,8 @@ async def upload_manual(req: ManualUploadRequest):
     try:
         return _import_summary(req.client_id, valid, errors)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.exception("upload_manual failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 # ── Template downloads ────────────────────────────────────────────────────────
