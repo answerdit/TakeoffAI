@@ -52,7 +52,8 @@ Your job is to:
 3. Apply productivity factors (hrs/unit) and labor burden multipliers (typically 1.35–1.55x base wage)
 4. Apply a regional cost index (CCI) adjustment for the given zip code (use RSMeans regional data as a mental model)
 5. Apply overhead % and target margin % to arrive at a total bid number
-6. Return a clean, line-item JSON estimate
+6. Return estimate_low as the realistic low end of the total project cost (typically 5–15% below total_bid based on low-end seed costs and favorable scope assumptions) and estimate_high as the realistic high end (typically 5–15% above total_bid based on high-end seed costs and scope risk). Both must be present in every response. estimate_low must be strictly less than total_bid, and total_bid must be strictly less than estimate_high.
+7. Return a clean, line-item JSON estimate
 
 ## Reference Material Unit Costs (seed data)
 
@@ -82,6 +83,8 @@ Always return valid JSON in this exact format — no markdown fences, no extra t
   "margin_pct": 0,
   "margin_amount": 0.00,
   "total_bid": 0.00,
+  "estimate_low": 0.00,
+  "estimate_high": 0.00,
   "confidence": "low|medium|high",
   "notes": "..."
 }}"""
