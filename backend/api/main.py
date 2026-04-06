@@ -3,10 +3,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aiosqlite
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import router
+from backend.api.routes import router, verify_api_key
 from backend.api.upload import upload_router
 from backend.api.verification import verification_router
 from backend.config import settings
@@ -154,8 +154,8 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api")
-app.include_router(upload_router, prefix="/api")
-app.include_router(verification_router, prefix="/api")
+app.include_router(upload_router, prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(verification_router, prefix="/api", dependencies=[Depends(verify_api_key)])
 
 
 @app.get("/api/health")

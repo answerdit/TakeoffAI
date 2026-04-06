@@ -171,6 +171,7 @@ def test_exclude_agent_adds_to_profile(tmp_path, monkeypatch):
     """POST /api/client/{id}/exclude-agent adds agent to excluded_agents list."""
     import backend.agents.feedback_loop as fl
     monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    monkeypatch.setenv("API_KEY", "test-key")
 
     import json
     profile = {
@@ -189,7 +190,8 @@ def test_exclude_agent_adds_to_profile(tmp_path, monkeypatch):
     app.include_router(router, prefix="/api")
 
     with TestClient(app) as c:
-        resp = c.post("/api/client/client1/exclude-agent", json={"agent_name": "aggressive"})
+        resp = c.post("/api/client/client1/exclude-agent", json={"agent_name": "aggressive"},
+                      headers={"X-API-Key": "test-key"})
 
     assert resp.status_code == 200
     updated = json.loads((tmp_path / "client1.json").read_text())
@@ -200,6 +202,7 @@ def test_reset_agent_history_clears_deviation(tmp_path, monkeypatch):
     """DELETE /api/client/{id}/agent-history/{agent} clears history and removes red flag."""
     import backend.agents.feedback_loop as fl
     monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    monkeypatch.setenv("API_KEY", "test-key")
 
     import json
     profile = {
@@ -224,7 +227,8 @@ def test_reset_agent_history_clears_deviation(tmp_path, monkeypatch):
     app.include_router(router, prefix="/api")
 
     with TestClient(app) as c:
-        resp = c.delete("/api/client/client2/agent-history/aggressive")
+        resp = c.delete("/api/client/client2/agent-history/aggressive",
+                        headers={"X-API-Key": "test-key"})
 
     assert resp.status_code == 200
     updated = json.loads((tmp_path / "client2.json").read_text())

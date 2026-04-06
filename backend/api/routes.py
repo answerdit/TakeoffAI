@@ -5,6 +5,7 @@ Thin HTTP layer; delegates all logic to agent modules.
 
 import asyncio
 import json
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -30,7 +31,10 @@ _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def verify_api_key(key: str = Security(_api_key_header)):
-    if settings.api_key and key != settings.api_key:
+    configured_key = os.environ.get("API_KEY", settings.api_key)
+    if not configured_key:
+        raise HTTPException(status_code=403, detail="API key not configured")
+    if key != configured_key:
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
 

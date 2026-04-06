@@ -311,6 +311,7 @@ def test_post_evolve_returns_skipped_when_no_dominance(tmp_path, monkeypatch):
     from backend.api.routes import router
 
     monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    monkeypatch.setenv("API_KEY", "test-key")
 
     profile = {
         "client_id": "balanced_client",
@@ -329,7 +330,8 @@ def test_post_evolve_returns_skipped_when_no_dominance(tmp_path, monkeypatch):
     app = FastAPI()
     app.include_router(router, prefix="/api")
     with TestClient(app) as c:
-        resp = c.post("/api/tournament/evolve", json={"client_id": "balanced_client"})
+        resp = c.post("/api/tournament/evolve", json={"client_id": "balanced_client"},
+                      headers={"X-API-Key": "test-key"})
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "skipped"
@@ -342,13 +344,16 @@ def test_post_evolve_returns_423_when_locked(monkeypatch):
     from fastapi.testclient import TestClient
     from backend.api.routes import router
 
+    monkeypatch.setenv("API_KEY", "test-key")
+
     app = FastAPI()
     app.include_router(router, prefix="/api")
 
     async def run_while_locked():
         async with ev._get_lock():
             with TestClient(app) as c:
-                return c.post("/api/tournament/evolve", json={"client_id": "any"})
+                return c.post("/api/tournament/evolve", json={"client_id": "any"},
+                              headers={"X-API-Key": "test-key"})
 
     resp = asyncio.run(run_while_locked())
     assert resp.status_code == 423
@@ -364,6 +369,7 @@ def test_post_evolve_returns_evolved_on_success(tmp_path, monkeypatch):
     from backend.api.routes import router
 
     monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    monkeypatch.setenv("API_KEY", "test-key")
     fake_tourn = tmp_path / "tournament.py"
     shutil.copy(ev.TOURNAMENT_PY, fake_tourn)
     monkeypatch.setattr(ev, "TOURNAMENT_PY", fake_tourn)
@@ -393,7 +399,8 @@ def test_post_evolve_returns_evolved_on_success(tmp_path, monkeypatch):
         app = FastAPI()
         app.include_router(router, prefix="/api")
         with TestClient(app) as c:
-            resp = c.post("/api/tournament/evolve", json={"client_id": "evolve_client"})
+            resp = c.post("/api/tournament/evolve", json={"client_id": "evolve_client"},
+                          headers={"X-API-Key": "test-key"})
 
     assert resp.status_code == 200
     data = resp.json()
