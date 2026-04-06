@@ -150,17 +150,26 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+_app_env = os.getenv("APP_ENV", "development")
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "")
 
-if "*" in ALLOWED_ORIGINS and os.getenv("APP_ENV", "development") != "development":
-    raise RuntimeError("Wildcard ALLOWED_ORIGINS cannot be used with allow_credentials=True in non-dev environments")
+if _app_env != "development" and not _raw_origins:
+    raise RuntimeError("ALLOWED_ORIGINS env var is required in non-development mode")
+
+ALLOWED_ORIGINS = (
+    _raw_origins.split(",") if _raw_origins
+    else ["http://localhost:3000", "http://localhost:5173"]
+)
+
+if "*" in ALLOWED_ORIGINS:
+    raise RuntimeError("Wildcard ALLOWED_ORIGINS is not permitted (incompatible with credentials)")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["POST", "GET", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 app.include_router(router, prefix="/api")
