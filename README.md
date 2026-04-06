@@ -1,57 +1,110 @@
-# TakeoffAI 🏗️
+# TakeoffAI
 
-> AI-powered construction pre-bid estimation and bid-winning strategy system.  
-> A product by **[answerd.it](https://answerd.it)**
+**AI-powered construction pre-bid estimation and bid-winning strategy.**
+A product by [answerd.it](https://answerd.it)
 
 ---
 
 ## What It Does
 
-**TakeoffAI** runs multiple AI bidding agents in parallel on each project, judges which strategy would win, and continuously improves itself using market feedback.
+Construction estimating is slow, inconsistent, and expensive to get wrong. A bid that's too high loses the job. A bid that's too low wins it and kills your margin. TakeoffAI gives contractors a sharper number — faster — by running multiple AI bidding strategies on every job, learning from your win history, and continuously improving its own pricing models over time.
 
-| Component | Job |
+You describe the project. TakeoffAI generates a line-item cost estimate, shows you a confidence range on that number, runs five distinct bidding personalities against it in parallel, and recommends a bid price with a win probability. Every tournament result feeds back into the system. The more you use it, the better it gets at pricing work the way you actually win it.
+
+---
+
+## Core Workflow
+
+**1. Pre-Bid Estimate**
+
+Paste a project description and zip code. TakeoffAI parses it into a line-item breakdown — materials, labor, burden, overhead, margin — anchored to RSMeans-style unit cost data and adjusted for your region. It returns a total bid price along with a confidence band (estimated low and high) so you know how much uncertainty you're carrying before you ever open the RFP.
+
+**2. Bid Strategy**
+
+Paste the RFP scope of work. TakeoffAI analyzes how your estimate fits the project requirements, generates three bid scenarios (conservative, balanced, aggressive), assigns win probabilities to each, and writes a full proposal narrative you can paste directly into your submission.
+
+**3. Tournament Mode**
+
+Five distinct bidding personalities — Conservative, Balanced, Aggressive, Historical Match, and Market Beater — each estimate the same job independently and in parallel. The system runs multiple samples per personality to find stable consensus bids, then shows you the full spread as a confidence band. You see exactly where the personalities agree and where they diverge, so you can make a more informed final call.
+
+**4. Bid History Import**
+
+Upload your historical bids as CSV or Excel. TakeoffAI ingests them into a per-client profile — tracking which personalities have won for you, against what competition, at what margins. This history shapes future tournament results for that client.
+
+**5. Self-Improving Harness**
+
+The HarnessEvolver agent reads tournament trace files, identifies which personalities are underperforming against your actual win history, rewrites their prompts, and commits the changes back to git. The system improves itself without manual tuning.
+
+---
+
+## System Components
+
+| Component | What It Does |
 |---|---|
-| `PreBidCalc` | Parses a project description → generates a line-item cost estimate with materials, labor, overhead, and margin |
-| `BidToWin` | Analyzes an RFP + your estimate → recommends a bid price, win probability, and drafts your proposal narrative |
-| `Tournament` | Runs 5 bidding personalities (conservative, balanced, aggressive, historical_match, market_beater) in parallel on the same job |
-| `Judge` | Scores tournament entries by human pick, historical bid proximity, or auto ELO — triggers feedback and harness evolution |
-| `FeedbackLoop` | Tracks per-client agent ELO scores, win rates, and winning bid examples; builds a client profile that improves over time |
-| `PriceVerifier` | Cross-checks LLM-generated unit prices against web sources; flags deviations >5% and updates seed CSVs |
-| `HarnessEvolver` | Agentic Claude loop that reads trace files, diagnoses underperforming personalities, rewrites their prompts, and commits to git |
+| `PreBidCalc` | Parses a project description into a line-item estimate with materials, labor, overhead, margin, and a low/high confidence band |
+| `BidToWin` | Analyzes RFP + estimate, generates bid scenarios with win probabilities, writes a proposal narrative |
+| `Tournament` | Runs 5 bidding personalities in parallel with multiple samples each; collapses to consensus bids; computes spread band |
+| `Judge` | Scores tournament entries by human pick, historical proximity, or auto ELO; triggers feedback and harness evolution |
+| `FeedbackLoop` | Maintains per-client ELO profiles, win rates, and winning bid examples that feed future tournaments |
+| `PriceVerifier` | Cross-checks LLM unit prices against current web sources; flags deviations above 5%; updates seed CSVs automatically |
+| `HarnessEvolver` | Agentic self-improvement loop: reads traces, diagnoses underperformers, rewrites prompts, commits to git |
+
+---
 
 ## Tech Stack
 
-- **Backend:** Python 3.11+, FastAPI, Anthropic Claude API (`claude-sonnet-4-5` / `claude-sonnet-4-6`)
-- **Frontend:** React + Vite + Tailwind CSS
-- **Data:** SQLite (`takeoffai.db`), CSV seed files (RSMeans-style unit costs), per-client JSON profiles
-- **Deployment:** Docker Desktop → USB installer for customer Macs
-- **Built with:** Claude Code
+- **Backend:** Python 3.11+, FastAPI, Anthropic Claude API (`claude-sonnet-4-6`)
+- **Frontend:** Vanilla HTML/CSS/JS — single-file, no build step, ships inside Docker
+- **Data:** SQLite, RSMeans-style CSV seed costs, per-client JSON profiles
+- **Deployment:** Docker Compose for production; `uv` for local dev; USB installer for customer Macs
+- **AI:** Claude Sonnet 4.6 for all agents; rate-limited FastAPI endpoints; slowapi middleware
 
-## Quick Start (Dev)
+---
+
+## Quick Start
 
 ```bash
-# 1. Clone
+# Clone
 git clone git@github.com:answerdit/TakeoffAI.git
 cd TakeoffAI
 
-# 2. Set your API key
+# Configure
 cp .env.template .env
-# Edit .env and add: ANTHROPIC_API_KEY=sk-ant-...
+# Add your Anthropic API key: ANTHROPIC_API_KEY=sk-ant-...
+# Optionally set API_KEY= for endpoint authentication
 
-# 3. Install deps
+# Install and run (dev)
 uv sync
-
-# 4. Run
 uv run uvicorn backend.api.main:app --reload
-# Frontend: cd frontend && npm install && npm run dev
+# Open frontend/dist/index.html in your browser
 ```
 
-## Docker (Production / Customer Deploy)
+## Docker
 
 ```bash
 docker-compose up --build
 # App runs at http://localhost:3000
 ```
+
+---
+
+## API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/estimate` | Generate a line-item estimate with confidence band |
+| POST | `/api/bid/strategy` | Analyze RFP and generate bid scenarios + proposal |
+| POST | `/api/tournament/run` | Run a multi-personality tournament in parallel |
+| POST | `/api/tournament/judge` | Score and judge a completed tournament |
+| GET | `/api/tournament/{id}` | Retrieve tournament and all entries |
+| POST | `/api/tournament/evolve` | Trigger harness evolution manually |
+| GET | `/api/client/{id}/profile` | Per-client ELO profile and win statistics |
+| POST | `/api/client/{id}/exclude-agent` | Exclude a personality from future tournaments |
+| POST | `/api/verify/estimate` | On-demand unit price verification |
+| GET | `/api/verify/audit` | Full price audit log |
+| GET | `/api/verify/queue` | Flagged price deviations pending review |
+
+---
 
 ## Project Structure
 
@@ -62,78 +115,62 @@ TakeoffAI/
  │   │   ├── pre_bid_calc.py      # Line-item cost estimator
  │   │   ├── bid_to_win.py        # RFP analyzer + bid strategy + proposal writer
  │   │   ├── tournament.py        # Parallel multi-personality bid runner
- │   │   ├── judge.py             # Tournament scorer (HUMAN / HISTORICAL / AUTO modes)
+ │   │   ├── judge.py             # Tournament scorer (HUMAN / HISTORICAL / AUTO)
  │   │   ├── feedback_loop.py     # Per-client ELO profiles + win statistics
- │   │   ├── price_verifier.py    # Unit price auditor (web scrape + CSV update)
- │   │   └── harness_evolver.py   # Agentic prompt optimizer (self-modifying harness)
+ │   │   ├── price_verifier.py    # Unit price auditor + CSV auto-update
+ │   │   └── harness_evolver.py   # Self-improving prompt optimizer
  │   ├── api/
- │   │   ├── main.py              # FastAPI app entry point
- │   │   ├── routes.py            # Core estimate + tournament endpoints
- │   │   ├── verification.py      # Price audit + review queue endpoints
- │   │   └── upload.py            # File upload handling
+ │   │   ├── main.py              # FastAPI app, middleware, DB init
+ │   │   ├── routes.py            # Core endpoints (estimate, bid, tournament)
+ │   │   ├── verification.py      # Price verification endpoints
+ │   │   └── upload.py            # Bid history import
  │   ├── data/
- │   │   ├── takeoffai.db         # SQLite — tournaments, entries, price_audit, review_queue
+ │   │   ├── takeoffai.db         # SQLite — tournaments, entries, price audit log
  │   │   ├── material_costs.csv   # RSMeans-style unit cost seed data
- │   │   └── client_profiles/     # Per-client JSON profiles (ELO, win stats, examples)
- │   ├── config.py                # pydantic-settings (env vars + .env)
+ │   │   └── client_profiles/     # Per-client profiles (ELO, win stats, bid examples)
+ │   ├── config.py                # pydantic-settings
  │   └── scheduler.py             # Nightly price verification batch job
- ├── frontend/                    # React UI
- ├── installer/                   # USB deploy: install.sh + .env.template
- ├── docs/                        # Architecture, design docs
- ├── tests/                       # pytest suite
+ ├── frontend/dist/               # Single-page app (no build step)
+ ├── installer/                   # USB deploy scripts
+ ├── tests/                       # pytest suite (75 tests)
+ ├── docs/                        # Architecture and design specs
  ├── Dockerfile
  ├── docker-compose.yml
  └── .env.template
 ```
 
-## API Endpoints
-
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/estimate` | Run PreBidCalc — single line-item estimate |
-| POST | `/api/bid/strategy` | Run BidToWin — bid scenarios + proposal |
-| POST | `/api/tournament/run` | Run N-agent tournament in parallel |
-| POST | `/api/tournament/judge` | Score + judge a completed tournament |
-| GET | `/api/tournament/{id}` | Retrieve tournament and entries |
-| POST | `/api/tournament/evolve` | Manually trigger harness evolution |
-| GET | `/api/client/{id}/profile` | Client ELO profile + win statistics |
-| POST | `/api/client/{id}/exclude-agent` | Exclude a personality from future tournaments |
-| DELETE | `/api/client/{id}/agent-history/{agent}` | Reset agent deviation history |
-| POST | `/api/verify/estimate` | On-demand price verification |
-| GET | `/api/verify/audit` | Price audit log |
-| GET | `/api/verify/queue` | Review queue (flagged deviations) |
+---
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | *(required)* | Anthropic API key |
-| `DEFAULT_OVERHEAD_PCT` | `20.0` | Default overhead % applied to estimates |
-| `DEFAULT_MARGIN_PCT` | `12.0` | Default margin % applied to estimates |
+| `ANTHROPIC_API_KEY` | required | Your Anthropic API key |
+| `API_KEY` | — | API key for endpoint authentication (recommended in production) |
+| `DEFAULT_OVERHEAD_PCT` | `20.0` | Default overhead applied to estimates |
+| `DEFAULT_MARGIN_PCT` | `12.0` | Default margin applied to estimates |
 | `APP_ENV` | `development` | Environment tag |
 | `API_PORT` | `8000` | FastAPI listen port |
-| `HARNESS_EVOLVER_MODEL` | `claude-sonnet-4-6` | Model used by harness evolver |
-| `HARNESS_EVOLVER_MAX_TOOL_CALLS` | `30` | Max tool calls per evolution run |
-
-## Roadmap
-
-- [x] Project scaffold
-- [x] PreBidCalc agent — scope parser + line-item estimator
-- [x] BidToWin agent — RFP analyzer + bid strategy + proposal writer
-- [x] Tournament system — 5 bidding personalities in parallel
-- [x] Judge — HUMAN / HISTORICAL / AUTO scoring modes
-- [x] FeedbackLoop — per-client ELO profiles + win statistics
-- [x] PriceVerifier — web-sourced unit price auditing + CSV auto-update
-- [x] HarnessEvolver — agentic self-improving prompt optimizer
-- [ ] Frontend UI — tournament dashboard, estimate form, proposal editor
-- [ ] Docker packaging
-- [ ] USB installer
-- [ ] SaaS upgrade (hosted at app.takeoffai.ai)
-
-## Parent Company
-
-Built and maintained by **[answerd.it](https://answerd.it)** — an AI pipeline company that discovers real-world problems and deploys intelligent solutions.
 
 ---
 
-*TakeoffAI — Know your number. Win the bid.*
+## Roadmap
+
+- [x] PreBidCalc — scope parser and line-item estimator with confidence bands
+- [x] BidToWin — RFP analysis, bid scenarios, proposal writer
+- [x] Tournament system — 5 personalities, parallel execution, consensus collapse
+- [x] Judge — HUMAN, HISTORICAL, and AUTO scoring modes
+- [x] FeedbackLoop — per-client ELO profiles and win statistics
+- [x] PriceVerifier — web-sourced unit price auditing with CSV auto-update
+- [x] HarnessEvolver — agentic self-improving prompt optimizer
+- [x] Frontend UI — estimate form, bid strategy, tournament tab, bid history import
+- [x] Docker packaging and USB installer
+- [ ] Hosted version at app.takeoffai.ai
+- [ ] Subcontractor bid comparison module
+- [ ] Direct integration with Procore and Buildertrend
+
+---
+
+Built and maintained by [answerd.it](https://answerd.it).
+
+*Know your number. Win the bid.*
