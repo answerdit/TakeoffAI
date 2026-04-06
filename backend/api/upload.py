@@ -6,6 +6,7 @@ Thin HTTP layer; parsing and persistence delegated to helpers below.
 
 import io
 import logging
+import re
 from typing import Optional
 
 import pandas as pd
@@ -16,6 +17,31 @@ from pydantic import BaseModel
 from backend.agents.feedback_loop import update_client_profile_from_upload
 
 upload_router = APIRouter(prefix="/upload", tags=["upload"])
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _validate_client_id(client_id: str) -> None:
+    """Reject client_id values that could enable path traversal."""
+    if not re.match(r'^[a-zA-Z0-9_\-]+$', client_id):
+        raise HTTPException(status_code=400, detail="Invalid client_id format")
+
+
+def _validate_csv_content(content: bytes) -> None:
+    """Reject binary files disguised as CSV."""
+    sample = content[:512]
+    try:
+        sample.decode("ascii")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid file content")
+    if b"\x00" in sample:
+        raise HTTPException(status_code=400, detail="Invalid file content")
+
+
+def _validate_xlsx_content(content: bytes) -> None:
+    """Reject files that don't start with PK zip magic bytes."""
+    if not content.startswith(b"\x50\x4b\x03\x04"):
+        raise HTTPException(status_code=400, detail="Invalid file content")
 
 # ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -146,11 +172,17 @@ async def upload_csv(
     client_id: str = Form(..., description="Client ID to update"),
 ):
     """Parse a CSV bid history file and import into client profile."""
+    _validate_client_id(client_id)
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a .csv")
     try:
         contents = await file.read()
+        if len(contents) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="File too large (10 MB max)")
+        _validate_csv_content(contents)
         df = pd.read_csv(io.BytesIO(contents), dtype=str)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Could not parse CSV: {exc}") from exc
 
@@ -174,11 +206,17 @@ async def upload_excel(
     client_id: str = Form(..., description="Client ID to update"),
 ):
     """Parse an Excel (.xlsx) bid history file and import into client profile."""
+    _validate_client_id(client_id)
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="File must be .xlsx or .xls")
     try:
         contents = await file.read()
+        if len(contents) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="File too large (10 MB max)")
+        _validate_xlsx_content(contents)
         df = pd.read_excel(io.BytesIO(contents), dtype=str, engine="openpyxl")
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Could not parse Excel file: {exc}") from exc
 
@@ -218,6 +256,7 @@ class ManualUploadRequest(BaseModel):
 @upload_router.post("/bids/manual")
 async def upload_manual(req: ManualUploadRequest):
     """Import bid records submitted as a JSON array from the manual entry table."""
+    _validate_client_id(req.client_id)
     if not req.bids:
         raise HTTPException(status_code=422, detail="No bid records provided")
 
@@ -281,6 +320,7 @@ class ImportRequest(BaseModel):
 @upload_router.post("/import")
 async def import_bids(req: ImportRequest):
     """Persist parsed bid records into the client profile for tournament learning."""
+    _validate_client_id(req.client_id)
     from backend.agents.feedback_loop import update_client_profile_from_upload
     if not req.records:
         raise HTTPException(status_code=400, detail="No records provided.")
