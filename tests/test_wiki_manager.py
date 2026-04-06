@@ -239,6 +239,7 @@ async def test_enrich_estimate_appends_section(tmp_path, monkeypatch):
     assert meta["status"] == "estimated"
     assert meta["estimate_total"] == 159880.0
     assert meta["estimate_low"] == 143000.0
+    assert meta["estimate_high"] == 176000.0
     assert "Estimate" in body
 
 
@@ -284,3 +285,4 @@ async def test_enrich_tournament_appends_section(tmp_path, monkeypatch):
     assert meta["band_low"] == 143200
     assert meta["band_high"] == 170000
     assert "Tournament" in body
+    assert meta["winner_personality"] == "aggressive"
