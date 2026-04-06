@@ -316,6 +316,15 @@ async def test_record_bid_decision(tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_record_bid_decision_noop_if_no_page(tmp_path, monkeypatch):
+    """record_bid_decision should silently do nothing if the job page doesn't exist."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    # No exception should be raised
+    await wm.record_bid_decision("nonexistent-job", our_bid=50000.0)
+
+
+@pytest.mark.anyio
 async def test_cascade_outcome_updates_multiple_pages(tmp_path, monkeypatch):
     """cascade_outcome should update job, client, and personality pages."""
     import backend.agents.wiki_manager as wm
@@ -361,6 +370,8 @@ async def test_cascade_outcome_updates_multiple_pages(tmp_path, monkeypatch):
     meta, body = wm._read_page(job_path)
     assert meta["status"] == "won"
     assert "Outcome" in body
+    from datetime import date as _date
+    assert meta["outcome_date"] == _date.today().isoformat()
 
     # Client page updated
     c_meta, _ = wm._read_page(client_path)
