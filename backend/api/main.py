@@ -12,6 +12,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from backend.api.routes import limiter, router, verify_api_key
 from backend.api.upload import upload_router
 from backend.api.verification import verification_router
+from backend.api.wiki_routes import wiki_router
 from backend.config import settings
 from backend.scheduler import start_scheduler, stop_scheduler
 
@@ -175,6 +176,7 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 app.include_router(upload_router, prefix="/api", dependencies=[Depends(verify_api_key)])
 app.include_router(verification_router, prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(wiki_router, prefix="/api", dependencies=[Depends(verify_api_key)])
 
 
 @app.get("/api/health")
