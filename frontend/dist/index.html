@@ -611,8 +611,15 @@
     <span class="logo-name">Takeoff<span>AI</span></span>
     <span class="logo-by">by answerd.it</span>
   </div>
-  <nav style="display:flex;align-items:center;gap:1.5rem;">
-    <a href="upload.html" class="nav-link">Import Bid History</a>
+  <nav style="display:flex;align-items:center;gap:1rem;">
+    <input
+      id="hdr-api-key"
+      type="password"
+      placeholder="API Key"
+      style="background:var(--bg-input);border:1px solid var(--border);border-radius:5px;
+             padding:4px 10px;font-size:0.78rem;color:var(--text);width:130px;
+             outline:none;font-family:monospace"
+    />
     <span class="header-badge">Beta</span>
   </nav>
 </header>
@@ -950,6 +957,21 @@
     setTimeout(() => t.remove(), 2800);
   }
 
+  /* ── API key ───────────────────────────────────────────────────────── */
+
+  const hdrApiKey = document.getElementById('hdr-api-key');
+  hdrApiKey.value = sessionStorage.getItem('takeoffai_key') || '';
+  hdrApiKey.addEventListener('input', () =>
+    sessionStorage.setItem('takeoffai_key', hdrApiKey.value)
+  );
+
+  function getHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      'X-API-Key': hdrApiKey.value,
+    };
+  }
+
   /* ── Tab switching ─────────────────────────────────────────────────── */
 
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -987,6 +1009,7 @@
     const overhead_pct = parseFloat(overheadSlider.value);
     const margin_pct   = parseFloat(marginSlider.value);
 
+    if (!hdrApiKey.value) { showError(estError, 'Enter your API key in the header.'); return; }
     if (!description) { showError(estError, 'Project description is required.'); return; }
     if (!zip_code)     { showError(estError, 'Zip code is required.'); return; }
 
@@ -998,7 +1021,7 @@
     try {
       const res = await fetch(`${API_BASE}/api/estimate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ description, zip_code, trade_type, overhead_pct, margin_pct }),
       });
 
@@ -1121,6 +1144,7 @@
     const competRaw   = document.getElementById('bid-competitors').value.trim();
     const estJson     = document.getElementById('bid-est-json').value.trim();
 
+    if (!hdrApiKey.value) { showError(bidError, 'Enter your API key in the header.'); return; }
     if (!rfp_text) { showError(bidError, 'RFP / project details are required.'); return; }
     if (!estJson)  { showError(bidError, 'Paste an estimate JSON or run a Pre-Bid Estimate first.'); return; }
 
@@ -1139,7 +1163,7 @@
     try {
       const res = await fetch(`${API_BASE}/api/bid/strategy`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ estimate, rfp_text, project_type, known_competitors }),
       });
 
@@ -1253,7 +1277,9 @@
   // Template download
   document.getElementById('dl-template').addEventListener('click', async (e) => {
     e.preventDefault();
-    const res = await fetch(`${API_BASE}/api/upload/template/csv`);
+    const res = await fetch(`${API_BASE}/api/upload/template/csv`, {
+      headers: { 'X-API-Key': hdrApiKey.value },
+    });
     if (!res.ok) { alert('Template not available yet.'); return; }
     const blob = await res.blob();
     const a = document.createElement('a');
@@ -1303,7 +1329,7 @@
 
     btn.textContent = 'Parsing…'; btn.disabled = true;
     try {
-      const res = await fetch(`${API_BASE}/api/upload/bids`, { method: 'POST', body: fd });
+      const res = await fetch(`${API_BASE}/api/upload/bids`, { method: 'POST', headers: { 'X-API-Key': hdrApiKey.value }, body: fd });
       const data = await res.json();
       if (!res.ok) { showError(errEl, data.detail || 'Upload failed.'); return; }
 
@@ -1367,7 +1393,7 @@
     try {
       const res = await fetch(`${API_BASE}/api/upload/import`, {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: getHeaders(),
         body: JSON.stringify({ client_id: clientId, records: parsedRecords })
       });
       const data = await res.json();
@@ -1407,7 +1433,7 @@
 
     const res = await fetch(`${API_BASE}/api/upload/import`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: getHeaders(),
       body: JSON.stringify({ client_id: clientId, records: [record] })
     });
     const data = await res.json();
