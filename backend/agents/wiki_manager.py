@@ -69,6 +69,57 @@ def _read_page(path: Path) -> tuple[dict, str]:
     return _parse_frontmatter(path)
 
 
+# ── Schema loading (cached) ──────────────────────────────────────────────────
+
+_schema_cache: Optional[str] = None
+
+
+def _load_schema() -> str:
+    """Load SCHEMA.md content, cached after first read."""
+    global _schema_cache
+    if _schema_cache is not None:
+        return _schema_cache
+    if SCHEMA_PATH.exists():
+        _schema_cache = SCHEMA_PATH.read_text(encoding="utf-8")
+    else:
+        _schema_cache = ""
+    return _schema_cache
+
+
+# ── LLM synthesis ────────────────────────────────────────────────────────────
+
+_SYSTEM_BASE = (
+    "You are a knowledge base writer for TakeoffAI, a construction bidding system. "
+    "Write clear, specific markdown for contractors reviewing their bidding history. "
+    "Include exact dollar amounts, percentages, agent names, and dates. "
+    "Use [[folder/page-slug]] wikilinks for cross-references. "
+    "Return ONLY the markdown body content — no frontmatter, no code fences."
+)
+
+
+async def _synthesize(
+    context: str,
+    instruction: str,
+) -> str:
+    """
+    Single LLM call to generate wiki page content.
+    Returns markdown string (body only, no frontmatter).
+    """
+    schema = _load_schema()
+    system = f"{_SYSTEM_BASE}\n\n{schema}" if schema else _SYSTEM_BASE
+
+    response = await _anthropic.messages.create(
+        model=WIKI_MODEL,
+        max_tokens=2048,
+        system=system,
+        messages=[{
+            "role": "user",
+            "content": f"Context:\n{context}\n\nInstruction:\n{instruction}",
+        }],
+    )
+    return response.content[0].text.strip()
+
+
 def _make_job_slug(client_id: str, project_name: str, date_str: str) -> str:
     """
     Generate a kebab-case job slug: YYYY-MM-DD-{client}-{short-description}.

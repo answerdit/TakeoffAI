@@ -2,6 +2,7 @@
 
 import pytest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch, MagicMock
 
 
 def test_parse_frontmatter_valid(tmp_path):
@@ -88,3 +89,48 @@ def test_slug_generation_special_chars():
     assert "'" not in slug
     assert "," not in slug
     assert "(" not in slug
+
+
+@pytest.mark.anyio
+async def test_synthesize_calls_claude(tmp_path, monkeypatch):
+    """_synthesize should call Claude with system + context + instruction and return text."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "_schema_cache", None)
+    monkeypatch.setattr(wm, "SCHEMA_PATH", tmp_path / "SCHEMA.md")
+    (tmp_path / "SCHEMA.md").write_text("# Test Schema\nRule 1: be concise.")
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="## Tournament\nConservative bid $143K.")]
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    result = await wm._synthesize(
+        context="Job: parking garage, client: acme",
+        instruction="Write the Tournament section.",
+    )
+
+    assert "Conservative" in result or "Tournament" in result
+    mock_client.messages.create.assert_called_once()
+    call_kwargs = mock_client.messages.create.call_args.kwargs
+    assert "Test Schema" in call_kwargs["system"]
+    assert "parking garage" in call_kwargs["messages"][0]["content"]
+
+
+@pytest.mark.anyio
+async def test_synthesize_missing_schema(tmp_path, monkeypatch):
+    """_synthesize should work even if SCHEMA.md is missing."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "_schema_cache", None)
+    monkeypatch.setattr(wm, "SCHEMA_PATH", tmp_path / "nonexistent.md")
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="Some content.")]
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    result = await wm._synthesize(context="test", instruction="write something")
+    assert result == "Some content."
