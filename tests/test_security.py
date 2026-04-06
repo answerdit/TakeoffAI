@@ -137,3 +137,25 @@ async def test_csv_renamed_to_xlsx_returns_400(monkeypatch):
             headers={"X-API-Key": "test-key"},
         )
     assert resp.status_code == 400
+
+
+# ── Fix 5: Rate limiting ──────────────────────────────────────────────────
+
+@pytest.mark.anyio
+async def test_rate_limiter_returns_429_after_burst(monkeypatch):
+    """Hitting an endpoint more than its rate limit should return 429."""
+    monkeypatch.setenv("API_KEY", "test-key")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        statuses = []
+        # Tournament run is limited to 10/minute — send 12 requests
+        for _ in range(12):
+            resp = await c.post(
+                "/api/tournament/run",
+                json={
+                    "description": "Build a 10000 sqft warehouse in Houston TX",
+                    "zip_code": "77001",
+                },
+                headers={"X-API-Key": "test-key"},
+            )
+            statuses.append(resp.status_code)
+    assert 429 in statuses, f"Expected at least one 429, got: {set(statuses)}"

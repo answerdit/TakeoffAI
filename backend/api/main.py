@@ -5,8 +5,11 @@ from pathlib import Path
 import aiosqlite
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
-from backend.api.routes import router, verify_api_key
+from backend.api.routes import limiter, router, verify_api_key
 from backend.api.upload import upload_router
 from backend.api.verification import verification_router
 from backend.config import settings
@@ -139,6 +142,13 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# ── Rate limiting (slowapi) ───────────────────────────────────────────────────
+# limiter is defined in routes.py (with default_limits=["60/minute"]) and
+# wired into app.state so SlowAPIMiddleware can enforce global + per-endpoint limits.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
 

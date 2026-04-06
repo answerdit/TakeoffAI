@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import Optional
 
 import aiosqlite
-from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from backend.agents.feedback_loop import exclude_agent as _exclude_agent, reset_agent_history as _reset_agent_history
 from backend.agents.harness_evolver import evolve_harness as _evolve_harness, _get_lock
@@ -25,6 +27,9 @@ from backend.agents.judge import judge_tournament
 from backend.config import settings
 
 DB_PATH = settings.db_path
+
+# ── Rate limiter (shared with main.py via app.state.limiter) ─────────────────
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 # ── API key authentication ────────────────────────────────────────────────────
 
@@ -72,7 +77,8 @@ class BidStrategyRequest(BaseModel):
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.post("/estimate")
-async def estimate(req: EstimateRequest):
+@limiter.limit("30/minute")
+async def estimate(request: Request, req: EstimateRequest):
     """Run PreBidCalc agent — returns a line-item cost estimate."""
     try:
         result = await run_prebid_calc(
@@ -89,7 +95,8 @@ async def estimate(req: EstimateRequest):
 
 
 @router.post("/bid/strategy")
-async def bid_strategy(req: BidStrategyRequest):
+@limiter.limit("30/minute")
+async def bid_strategy(request: Request, req: BidStrategyRequest):
     """Run BidToWin agent — returns bid scenarios and win strategy."""
     try:
         result = await run_bid_to_win(
@@ -131,7 +138,8 @@ class TournamentJudgeRequest(BaseModel):
 
 
 @router.post("/tournament/run")
-async def tournament_run(req: TournamentRunRequest):
+@limiter.limit("10/minute")
+async def tournament_run(request: Request, req: TournamentRunRequest):
     """Run a bid tournament — N agents estimate the same project in parallel."""
     try:
         result = await run_tournament(
