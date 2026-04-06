@@ -5,6 +5,7 @@ Endpoints for price audit, review queue, on-demand verification, and calibration
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
@@ -20,6 +21,12 @@ from backend.scheduler import run_verification_batch
 DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
 
 verification_router = APIRouter()
+
+
+def _validate_client_id(client_id: str) -> None:
+    """Reject client_id values that could enable path traversal."""
+    if not re.match(r'^[a-zA-Z0-9_\-]+$', client_id):
+        raise HTTPException(status_code=400, detail="Invalid client_id format")
 
 
 # ── Pydantic models ──────────────────────────────────────────────────────────
@@ -192,6 +199,7 @@ async def resolve_queue_item(queue_id: int, req: QueueResolveRequest):
 @verification_router.post("/verify/outcome")
 async def submit_outcome(req: OutcomeRequest):
     """Submit actual job cost after closeout; updates calibration data."""
+    _validate_client_id(req.client_id)
     try:
         import asyncio
         profile = await asyncio.to_thread(
@@ -217,6 +225,7 @@ async def submit_outcome(req: OutcomeRequest):
 @verification_router.get("/verify/accuracy/{client_id}")
 async def get_accuracy(client_id: str):
     """Return agent accuracy and win probability calibration report for a client."""
+    _validate_client_id(client_id)
     try:
         import asyncio
         report = await asyncio.to_thread(get_agent_accuracy_report, client_id)

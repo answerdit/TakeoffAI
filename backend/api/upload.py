@@ -324,5 +324,9 @@ async def import_bids(req: ImportRequest):
     from backend.agents.feedback_loop import update_client_profile_from_upload
     if not req.records:
         raise HTTPException(status_code=400, detail="No records provided.")
-    result = update_client_profile_from_upload(req.client_id, req.records)
-    return {"status": "imported", "client_id": req.client_id, **result}
+    try:
+        result = update_client_profile_from_upload(req.client_id, req.records)
+        return {"status": "imported", "client_id": req.client_id, **result}
+    except Exception as exc:
+        logging.exception("import_bids failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
