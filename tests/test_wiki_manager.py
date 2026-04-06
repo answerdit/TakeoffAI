@@ -286,3 +286,122 @@ async def test_enrich_tournament_appends_section(tmp_path, monkeypatch):
     assert meta["band_high"] == 170000
     assert "Tournament" in body
     assert meta["winner_personality"] == "aggressive"
+
+
+@pytest.mark.anyio
+async def test_record_bid_decision(tmp_path, monkeypatch):
+    """record_bid_decision should append Bid Decision section and set our_bid."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+
+    job_path = tmp_path / "jobs" / "2026-04-06-acme-garage.md"
+    wm._write_page(
+        job_path,
+        {"status": "tournament-complete", "client": "acme", "tournament_id": 42},
+        "# Garage\n\n## Scope\nBuild it.\n\n## Tournament\nBids ranged $143K-$181K.",
+    )
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="## Bid Decision\nGoing with $159K Balanced consensus.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    await wm.record_bid_decision("2026-04-06-acme-garage", our_bid=159880.0, notes="Balanced consensus")
+
+    meta, body = wm._read_page(job_path)
+    assert meta["status"] == "bid-submitted"
+    assert meta["our_bid"] == 159880.0
+    assert "Bid Decision" in body
+
+
+@pytest.mark.anyio
+async def test_cascade_outcome_updates_multiple_pages(tmp_path, monkeypatch):
+    """cascade_outcome should update job, client, and personality pages."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(wm, "PERSONALITIES_DIR", tmp_path / "personalities")
+    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
+
+    # Pre-create job page
+    job_path = tmp_path / "jobs" / "2026-04-06-acme-garage.md"
+    wm._write_page(
+        job_path,
+        {
+            "status": "bid-submitted", "client": "acme", "our_bid": 159880.0,
+            "tournament_id": 42, "winner_personality": "balanced",
+        },
+        "# Garage\n\n## Scope\nBuild it.\n\n## Bid Decision\nGoing with Balanced.",
+    )
+
+    # Pre-create client page
+    client_path = tmp_path / "clients" / "acme.md"
+    wm._write_page(
+        client_path,
+        {"client_id": "acme", "total_jobs": 1, "wins": 0, "losses": 0, "first_job": "2026-04-06"},
+        "# Acme\n\n## Profile\nNew client.\n\n## Recent Jobs\n",
+    )
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="## Outcome\nWon the bid at $159K.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    await wm.cascade_outcome(
+        job_slug="2026-04-06-acme-garage",
+        status="won",
+        actual_cost=None,
+        notes="Client accepted our bid",
+    )
+
+    # Job page updated
+    meta, body = wm._read_page(job_path)
+    assert meta["status"] == "won"
+    assert "Outcome" in body
+
+    # Client page updated
+    c_meta, _ = wm._read_page(client_path)
+    assert c_meta["wins"] == 1
+
+    # Personality page created
+    personality_path = tmp_path / "personalities" / "balanced.md"
+    assert personality_path.exists()
+
+
+@pytest.mark.anyio
+async def test_cascade_outcome_closed_with_actual_cost(tmp_path, monkeypatch):
+    """cascade_outcome with status=closed should set actual_cost in frontmatter."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(wm, "PERSONALITIES_DIR", tmp_path / "personalities")
+    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
+
+    job_path = tmp_path / "jobs" / "2026-04-06-acme-garage.md"
+    wm._write_page(
+        job_path,
+        {"status": "won", "client": "acme", "our_bid": 159880.0, "tournament_id": 42, "winner_personality": "balanced"},
+        "# Garage\n\n## Outcome\nWon.",
+    )
+    client_path = tmp_path / "clients" / "acme.md"
+    wm._write_page(client_path, {"client_id": "acme", "total_jobs": 1, "wins": 1, "losses": 0, "first_job": "2026-04-06"}, "# Acme")
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="## Outcome\nClosed at $148K actual cost. 7.4% margin captured.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    await wm.cascade_outcome(
+        job_slug="2026-04-06-acme-garage",
+        status="closed",
+        actual_cost=148000.0,
+    )
+
+    meta, _ = wm._read_page(job_path)
+    assert meta["status"] == "closed"
+    assert meta["actual_cost"] == 148000.0

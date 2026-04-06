@@ -323,3 +323,203 @@ async def enrich_tournament(job_slug: str, tournament_data: dict) -> None:
         _write_page(page_path, meta, body)
     except Exception:
         logger.exception("enrich_tournament: failed for job %s", job_slug)
+
+
+async def record_bid_decision(
+    job_slug: str,
+    our_bid: float,
+    notes: str = "",
+) -> None:
+    """Append Bid Decision section and update status to bid-submitted."""
+    page_path = JOBS_DIR / f"{job_slug}.md"
+    if not page_path.exists():
+        logger.debug("record_bid_decision: job page %s not found, skipping", job_slug)
+        return
+
+    meta, body = _read_page(page_path)
+    meta["status"] = "bid-submitted"
+    meta["our_bid"] = our_bid
+
+    section = await _synthesize(
+        context=(
+            f"Existing page:\n{body}\n\n"
+            f"Bid decision: ${our_bid:,.2f}\n"
+            f"Notes: {notes}"
+        ),
+        instruction=(
+            "Write a ## Bid Decision section. Summarize:\n"
+            "- Which bid amount was chosen and why\n"
+            "- How it relates to the tournament band\n"
+            "- Risk assessment for this number\n"
+            "Do not repeat earlier sections."
+        ),
+    )
+
+    body = _append_section(body, section)
+    _write_page(page_path, meta, body)
+
+
+async def cascade_outcome(
+    job_slug: str,
+    status: str,
+    actual_cost: Optional[float] = None,
+    notes: str = "",
+) -> None:
+    """
+    Full cascade on outcome (won/lost/closed).
+    Step 1: Update job page
+    Step 2: Update client page
+    Step 3: Update personality pages
+    Step 4: Update material pages (if flagged — checked via frontmatter)
+    """
+    page_path = JOBS_DIR / f"{job_slug}.md"
+    if not page_path.exists():
+        logger.warning("cascade_outcome: job page %s not found", job_slug)
+        return
+
+    meta, body = _read_page(page_path)
+
+    # ── Step 1: Update job page ──────────────────────────────────────────
+    meta["status"] = status
+    meta["outcome_date"] = date.today().isoformat()
+    if actual_cost is not None:
+        meta["actual_cost"] = actual_cost
+
+    context_data = {
+        "status": status,
+        "our_bid": meta.get("our_bid"),
+        "actual_cost": actual_cost,
+        "notes": notes,
+    }
+    section = await _synthesize(
+        context=f"Existing page:\n{body}\n\nOutcome data:\n{json.dumps(context_data, default=str)}",
+        instruction=(
+            f"Write or update the ## Outcome section for status={status}. Include:\n"
+            "- The result (won/lost/closed)\n"
+            "- If actual_cost is provided, analyze deviation from our_bid\n"
+            "- Lessons learned or patterns observed\n"
+            "Do not repeat earlier sections."
+        ),
+    )
+    body = _append_section(body, section)
+    _write_page(page_path, meta, body)
+
+    # ── Step 2: Update client page ───────────────────────────────────────
+    client_id = meta.get("client")
+    if client_id:
+        try:
+            await _update_client_page_on_outcome(client_id, job_slug, meta, status)
+        except Exception:
+            logger.exception("cascade: failed to update client page for %s", client_id)
+
+    # ── Step 3: Update personality pages ─────────────────────────────────
+    personality = meta.get("winner_personality")
+    if personality:
+        try:
+            await _update_personality_page(personality, job_slug, meta, status)
+        except Exception:
+            logger.exception("cascade: failed to update personality page %s", personality)
+
+    # ── Step 4: Material pages (future — triggered by PriceVerifier) ─────
+    # update_material_page is called separately by PriceVerifier, not here
+
+
+async def _update_client_page_on_outcome(
+    client_id: str,
+    job_slug: str,
+    job_meta: dict,
+    status: str,
+) -> None:
+    """Update client wiki page with outcome from a job."""
+    client_path = CLIENTS_DIR / f"{client_id}.md"
+    if not client_path.exists():
+        _ensure_client_page(client_id)
+
+    meta, body = _read_page(client_path)
+
+    if status == "won":
+        meta["wins"] = meta.get("wins", 0) + 1
+    elif status == "lost":
+        meta["losses"] = meta.get("losses", 0) + 1
+
+    updated_body = await _synthesize(
+        context=(
+            f"Current client page:\n{body}\n\n"
+            f"New outcome: job [[jobs/{job_slug}]] status={status}\n"
+            f"Job details: {json.dumps(job_meta, default=str)}"
+        ),
+        instruction=(
+            "Rewrite this client page body with the new outcome incorporated. Maintain:\n"
+            "- ## Profile section\n"
+            "- ## Win/Loss Summary with updated narrative\n"
+            "- ## Recent Jobs with [[jobs/slug]] wikilink for the new job\n"
+            "- ## Patterns section with any updated observations\n"
+            "Keep existing job links. Add the new one."
+        ),
+    )
+
+    _write_page(client_path, meta, updated_body)
+
+
+async def _update_personality_page(
+    personality: str,
+    job_slug: str,
+    job_meta: dict,
+    status: str,
+) -> None:
+    """Update or create a personality wiki page with outcome from a job."""
+    filename = personality.replace("_", "-")
+    page_path = PERSONALITIES_DIR / f"{filename}.md"
+
+    if not page_path.exists():
+        _seed_personality_page(personality)
+
+    meta, body = _read_page(page_path)
+
+    if status == "won":
+        meta["wins"] = meta.get("wins", 0) + 1
+    meta["total_tournaments"] = meta.get("total_tournaments", 0) + 1
+
+    total = meta.get("total_tournaments", 1)
+    meta["win_rate"] = round(meta.get("wins", 0) / total, 4) if total > 0 else 0.0
+
+    updated_body = await _synthesize(
+        context=(
+            f"Current personality page:\n{body}\n\n"
+            f"New result: job [[jobs/{job_slug}]] status={status}\n"
+            f"Job details: {json.dumps(job_meta, default=str)}"
+        ),
+        instruction=(
+            "Update this personality page with the new job result. Add a short note to "
+            "## Recent Results with the job wikilink, bid amount, and outcome. "
+            "Update ## Performance if any new patterns are visible. "
+            "Keep all existing content."
+        ),
+    )
+
+    _write_page(page_path, meta, updated_body)
+
+
+def _seed_personality_page(personality: str) -> None:
+    """Create a personality page seeded from PERSONALITY_PROMPTS."""
+    from backend.agents.tournament import PERSONALITY_PROMPTS
+
+    filename = personality.replace("_", "-")
+    page_path = PERSONALITIES_DIR / f"{filename}.md"
+    prompt_text = PERSONALITY_PROMPTS.get(personality, "No prompt defined.")
+    display_name = personality.replace("_", " ").title()
+
+    meta = {
+        "personality": personality,
+        "total_tournaments": 0,
+        "wins": 0,
+        "win_rate": 0.0,
+    }
+    body = (
+        f"# {display_name}\n\n"
+        f"## Philosophy\n{prompt_text}\n\n"
+        "## Performance\nNo data yet.\n\n"
+        "## Recent Results\n\n"
+        "## Evolution History\n"
+    )
+    _write_page(page_path, meta, body)
