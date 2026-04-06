@@ -207,3 +207,80 @@ async def test_create_job_creates_client_page_if_missing(tmp_path, monkeypatch):
     meta, _ = wm._parse_frontmatter(client_page)
     assert meta["client_id"] == "newclient"
     assert meta["total_jobs"] == 1
+
+
+@pytest.mark.anyio
+async def test_enrich_estimate_appends_section(tmp_path, monkeypatch):
+    """enrich_estimate should append Estimate section and update status."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+
+    # Pre-create a prospect job page
+    job_path = tmp_path / "jobs" / "2026-04-06-acme-garage.md"
+    wm._write_page(job_path, {"status": "prospect", "client": "acme"}, "# Garage\n\n## Scope\nBuild it.")
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="## Estimate\nTotal bid $159K with high confidence. Key costs: concrete $43K, steel $98K.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    estimate_data = {
+        "total_bid": 159880.0,
+        "estimate_low": 143000.0,
+        "estimate_high": 176000.0,
+        "confidence": "high",
+        "line_items": [{"description": "Concrete slab", "subtotal": 43200}],
+    }
+
+    await wm.enrich_estimate("2026-04-06-acme-garage", estimate_data)
+
+    meta, body = wm._read_page(job_path)
+    assert meta["status"] == "estimated"
+    assert meta["estimate_total"] == 159880.0
+    assert meta["estimate_low"] == 143000.0
+    assert "Estimate" in body
+
+
+@pytest.mark.anyio
+async def test_enrich_estimate_noop_if_no_page(tmp_path, monkeypatch):
+    """enrich_estimate should silently do nothing if the job page doesn't exist."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+
+    # No exception should be raised
+    await wm.enrich_estimate("nonexistent-job", {"total_bid": 100000})
+
+
+@pytest.mark.anyio
+async def test_enrich_tournament_appends_section(tmp_path, monkeypatch):
+    """enrich_tournament should append Tournament section and update status."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+
+    job_path = tmp_path / "jobs" / "2026-04-06-acme-garage.md"
+    wm._write_page(job_path, {"status": "estimated", "client": "acme"}, "# Garage\n\n## Scope\nBuild it.\n\n## Estimate\nTotal $159K.")
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="## Tournament\nFive agents bid. Band: $143K-$181K. Market Beater lowest at $151K.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    tournament_data = {
+        "tournament_id": 42,
+        "consensus_entries": [
+            {"agent_name": "conservative", "total_bid": 170000, "confidence": "high"},
+            {"agent_name": "market_beater", "total_bid": 151500, "confidence": "high"},
+            {"agent_name": "aggressive", "total_bid": 143200, "confidence": "medium"},
+        ],
+    }
+
+    await wm.enrich_tournament("2026-04-06-acme-garage", tournament_data)
+
+    meta, body = wm._read_page(job_path)
+    assert meta["status"] == "tournament-complete"
+    assert meta["tournament_id"] == 42
+    assert meta["band_low"] == 143200
+    assert meta["band_high"] == 170000
+    assert "Tournament" in body

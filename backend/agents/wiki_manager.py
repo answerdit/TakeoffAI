@@ -6,6 +6,7 @@ All wiki I/O goes through this module. No other code writes to the wiki/ directo
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -120,6 +121,21 @@ async def _synthesize(
     return response.content[0].text.strip()
 
 
+# ── Section helpers ──────────────────────────────────────────────────────────
+
+
+def _append_section(body: str, new_section: str) -> str:
+    """
+    Append a new section to the page body.
+    Inserts before ## Links if that section exists, otherwise appends at end.
+    """
+    links_marker = "\n## Links"
+    if links_marker in body:
+        idx = body.index(links_marker)
+        return body[:idx].rstrip() + "\n\n" + new_section.strip() + "\n" + body[idx:]
+    return body.rstrip() + "\n\n" + new_section.strip() + "\n"
+
+
 # ── Public functions ─────────────────────────────────────────────────────────
 
 
@@ -222,3 +238,81 @@ def _make_job_slug(client_id: str, project_name: str, date_str: str) -> str:
     # Collapse whitespace and dashes into single dashes
     slug = re.sub(r"[\s-]+", "-", cleaned).strip("-").lower()
     return slug
+
+
+async def enrich_estimate(job_slug: str, estimate_data: dict) -> None:
+    """
+    Append Estimate section to a job page and update status to 'estimated'.
+    No-op if the job page doesn't exist (fire-and-forget safe).
+    """
+    page_path = JOBS_DIR / f"{job_slug}.md"
+    if not page_path.exists():
+        logger.debug("enrich_estimate: job page %s not found, skipping", job_slug)
+        return
+
+    meta, body = _read_page(page_path)
+
+    meta["status"] = "estimated"
+    meta["estimate_total"] = estimate_data.get("total_bid")
+    meta["estimate_low"] = estimate_data.get("estimate_low")
+    meta["estimate_high"] = estimate_data.get("estimate_high")
+
+    section = await _synthesize(
+        context=(
+            f"Existing page:\n{body}\n\n"
+            f"Estimate data:\n{json.dumps(estimate_data, indent=2, default=str)}"
+        ),
+        instruction=(
+            "Write a ## Estimate section to append to this job page. Summarize:\n"
+            "- Total bid amount and confidence level\n"
+            "- Key line items and where costs are concentrated\n"
+            "- The estimate range (low to high) and what it means for risk\n"
+            "Do not repeat the Scope section. Do not include frontmatter."
+        ),
+    )
+
+    body = _append_section(body, section)
+    _write_page(page_path, meta, body)
+
+
+async def enrich_tournament(job_slug: str, tournament_data: dict) -> None:
+    """
+    Append Tournament section to a job page and update status to 'tournament-complete'.
+    No-op if the job page doesn't exist.
+    """
+    page_path = JOBS_DIR / f"{job_slug}.md"
+    if not page_path.exists():
+        logger.debug("enrich_tournament: job page %s not found, skipping", job_slug)
+        return
+
+    meta, body = _read_page(page_path)
+
+    entries = tournament_data.get("consensus_entries", [])
+    bids = [e["total_bid"] for e in entries if e.get("total_bid")]
+
+    meta["status"] = "tournament-complete"
+    meta["tournament_id"] = tournament_data.get("tournament_id")
+    meta["band_low"] = min(bids) if bids else None
+    meta["band_high"] = max(bids) if bids else None
+
+    if entries:
+        winner = min(entries, key=lambda e: e.get("total_bid", float("inf")))
+        meta["winner_personality"] = winner.get("agent_name")
+
+    section = await _synthesize(
+        context=(
+            f"Existing page:\n{body}\n\n"
+            f"Tournament data:\n{json.dumps(tournament_data, indent=2, default=str)}"
+        ),
+        instruction=(
+            "Write a ## Tournament section to append to this job page. Summarize:\n"
+            "- How many agents bid and the overall band (min to max)\n"
+            "- Each agent's bid and confidence, noting agreements and divergences\n"
+            "- Which agent came in lowest and what strategy drove that\n"
+            "- Include [[personalities/agent-name]] wikilinks for each agent\n"
+            "Do not repeat earlier sections. Do not include frontmatter."
+        ),
+    )
+
+    body = _append_section(body, section)
+    _write_page(page_path, meta, body)
