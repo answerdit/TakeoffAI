@@ -416,3 +416,125 @@ async def test_cascade_outcome_closed_with_actual_cost(tmp_path, monkeypatch):
     meta, _ = wm._read_page(job_path)
     assert meta["status"] == "closed"
     assert meta["actual_cost"] == 148000.0
+
+
+@pytest.mark.anyio
+async def test_update_material_page_creates_new(tmp_path, monkeypatch):
+    """update_material_page should create a new material page if one doesn't exist."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="# Concrete\n\n## Current Pricing\nVerified at $5.80/sqft.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    await wm.update_material_page(
+        item="concrete",
+        unit="sqft",
+        ai_unit_cost=6.50,
+        verified_mid=5.80,
+        deviation_pct=12.07,
+        category="structural",
+    )
+
+    pages = list((tmp_path / "materials").glob("*.md"))
+    assert len(pages) == 1
+    meta, body = wm._read_page(pages[0])
+    assert meta["material"] == "concrete"
+    assert meta["deviation_pct"] == 12.07
+    assert "Pricing" in body
+
+
+@pytest.mark.anyio
+async def test_update_material_page_updates_existing(tmp_path, monkeypatch):
+    """update_material_page should update an existing material page."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
+
+    page_path = tmp_path / "materials" / "concrete.md"
+    wm._write_page(
+        page_path,
+        {"material": "concrete", "category": "structural", "last_verified": "2026-04-01", "deviation_pct": 5.0, "verified_mid": 5.50},
+        "# Concrete\n\n## Current Pricing\nOld data.",
+    )
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="# Concrete\n\n## Current Pricing\nUpdated to $5.80.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    await wm.update_material_page(
+        item="concrete",
+        unit="sqft",
+        ai_unit_cost=6.50,
+        verified_mid=5.80,
+        deviation_pct=12.07,
+        category="structural",
+    )
+
+    meta, _ = wm._read_page(page_path)
+    assert meta["deviation_pct"] == 12.07
+    assert meta["verified_mid"] == 5.80
+
+
+def test_lint_finds_broken_links(tmp_path, monkeypatch):
+    """lint should detect wikilinks to nonexistent pages."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
+    monkeypatch.setattr(wm, "PERSONALITIES_DIR", tmp_path / "personalities")
+
+    (tmp_path / "jobs").mkdir()
+    job_path = tmp_path / "jobs" / "test-job.md"
+    wm._write_page(
+        job_path,
+        {"status": "prospect", "client": "ghost"},
+        "# Test\n\n## Links\n- [[clients/ghost]]",
+    )
+
+    report = wm.lint()
+    assert len(report["broken_links"]) >= 1
+    assert any("ghost" in bl["link"] for bl in report["broken_links"])
+
+
+def test_lint_finds_stale_jobs(tmp_path, monkeypatch):
+    """lint should flag jobs stuck in estimated for >30 days."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
+    monkeypatch.setattr(wm, "PERSONALITIES_DIR", tmp_path / "personalities")
+
+    (tmp_path / "jobs").mkdir()
+    job_path = tmp_path / "jobs" / "old-job.md"
+    wm._write_page(
+        job_path,
+        {"status": "estimated", "client": "acme", "date": "2026-01-01"},
+        "# Old Job\n\n## Scope\nStale.",
+    )
+
+    report = wm.lint()
+    assert len(report["stale_jobs"]) >= 1
+
+
+def test_lint_validates_frontmatter(tmp_path, monkeypatch):
+    """lint should flag missing required frontmatter fields."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
+    monkeypatch.setattr(wm, "PERSONALITIES_DIR", tmp_path / "personalities")
+
+    (tmp_path / "jobs").mkdir()
+    job_path = tmp_path / "jobs" / "bad-job.md"
+    wm._write_page(job_path, {"client": "acme"}, "# Bad Job")
+
+    report = wm.lint()
+    assert len(report["frontmatter_errors"]) >= 1

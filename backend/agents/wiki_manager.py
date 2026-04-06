@@ -502,6 +502,154 @@ async def _update_personality_page(
     _write_page(page_path, meta, updated_body)
 
 
+async def update_material_page(
+    item: str,
+    unit: str,
+    ai_unit_cost: float,
+    verified_mid: float,
+    deviation_pct: float,
+    category: str = "general",
+) -> None:
+    """
+    Create or update a material wiki page from PriceVerifier data.
+    """
+    filename = re.sub(r"[^a-zA-Z0-9\s-]", "", item)
+    filename = re.sub(r"[\s-]+", "-", filename).strip("-").lower()
+    page_path = MATERIALS_DIR / f"{filename}.md"
+
+    today = date.today().isoformat()
+
+    if page_path.exists():
+        meta, body = _read_page(page_path)
+        meta["last_verified"] = today
+        meta["verified_mid"] = verified_mid
+        meta["deviation_pct"] = deviation_pct
+    else:
+        meta = {
+            "material": item.lower(),
+            "category": category,
+            "last_verified": today,
+            "seed_low": None,
+            "seed_high": None,
+            "verified_mid": verified_mid,
+            "deviation_pct": deviation_pct,
+        }
+        body = ""
+
+    context_data = {
+        "item": item,
+        "unit": unit,
+        "ai_unit_cost": ai_unit_cost,
+        "verified_mid": verified_mid,
+        "deviation_pct": deviation_pct,
+    }
+    updated_body = await _synthesize(
+        context=(
+            f"Current page:\n{body}\n\n"
+            f"New verification data:\n{json.dumps(context_data)}"
+        ),
+        instruction=(
+            "Write or update this material page. Include:\n"
+            "- ## Current Pricing — verified price, AI price, deviation\n"
+            "- ## Deviation History — add this data point to the trend\n"
+            "- ## Job Impact — note which jobs used this material (if known)\n"
+            "Keep existing content and add the new data point."
+        ),
+    )
+
+    _write_page(page_path, meta, updated_body)
+
+
+# ── Lint ─────────────────────────────────────────────────────────────────────
+
+_REQUIRED_FRONTMATTER = {
+    "jobs": ["status", "client"],
+    "clients": ["client_id"],
+    "personalities": ["personality"],
+    "materials": ["material"],
+}
+
+_STALE_STATUSES = {"prospect", "estimated", "tournament-complete"}
+_STALE_DAYS = 30
+
+
+def lint() -> dict:
+    """
+    Run wiki health checks. Returns structured report dict.
+    Checks: broken links, orphan pages, stale jobs, frontmatter validation.
+    Does NOT auto-fix anything.
+    """
+    all_pages: dict[str, Path] = {}
+    all_links: list[tuple[str, str]] = []
+    inbound: set[str] = set()
+
+    broken_links = []
+    orphan_pages = []
+    stale_jobs = []
+    frontmatter_errors = []
+
+    for subdir in [JOBS_DIR, CLIENTS_DIR, MATERIALS_DIR, PERSONALITIES_DIR]:
+        if not subdir.exists():
+            continue
+        for p in subdir.glob("*.md"):
+            rel = f"{subdir.name}/{p.stem}"
+            all_pages[rel] = p
+
+    for rel, path in all_pages.items():
+        meta, body = _parse_frontmatter(path)
+        page_type = path.parent.name
+
+        required = _REQUIRED_FRONTMATTER.get(page_type, [])
+        for field in required:
+            if field not in meta:
+                frontmatter_errors.append({
+                    "page": rel,
+                    "error": f"missing required field: {field}",
+                })
+
+        if page_type == "jobs":
+            valid_statuses = {"prospect", "estimated", "tournament-complete", "bid-submitted", "won", "lost", "closed"}
+            if meta.get("status") and meta["status"] not in valid_statuses:
+                frontmatter_errors.append({
+                    "page": rel,
+                    "error": f"invalid status: {meta['status']}",
+                })
+
+            if meta.get("status") in _STALE_STATUSES and meta.get("date"):
+                try:
+                    job_date = date.fromisoformat(str(meta["date"]))
+                    days = (date.today() - job_date).days
+                    if days > _STALE_DAYS:
+                        stale_jobs.append({
+                            "slug": path.stem,
+                            "status": meta["status"],
+                            "days_stale": days,
+                        })
+                except (ValueError, TypeError):
+                    pass
+
+        for match in re.finditer(r"\[\[([^\]]+)\]\]", body):
+            link_target = match.group(1)
+            all_links.append((rel, link_target))
+            inbound.add(link_target)
+
+    for source, target in all_links:
+        if target not in all_pages:
+            broken_links.append({"page": source, "link": target})
+
+    for rel in all_pages:
+        if rel not in inbound:
+            orphan_pages.append(rel)
+
+    return {
+        "orphan_pages": orphan_pages,
+        "broken_links": broken_links,
+        "stale_jobs": stale_jobs,
+        "frontmatter_errors": frontmatter_errors,
+        "contradictions": [],
+    }
+
+
 def _seed_personality_page(personality: str) -> None:
     """Create a personality page seeded from PERSONALITY_PROMPTS."""
     from backend.agents.tournament import PERSONALITY_PROMPTS
