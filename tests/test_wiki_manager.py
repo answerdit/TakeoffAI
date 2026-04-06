@@ -478,6 +478,10 @@ async def test_update_material_page_updates_existing(tmp_path, monkeypatch):
     meta, _ = wm._read_page(page_path)
     assert meta["deviation_pct"] == 12.07
     assert meta["verified_mid"] == 5.80
+    from datetime import date as _date
+    assert meta["last_verified"] == _date.today().isoformat()
+    assert meta["material"] == "concrete"   # existing field preserved
+    assert meta["category"] == "structural" # existing field preserved
 
 
 def test_lint_finds_broken_links(tmp_path, monkeypatch):
