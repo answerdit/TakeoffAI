@@ -120,6 +120,95 @@ async def _synthesize(
     return response.content[0].text.strip()
 
 
+# ── Public functions ─────────────────────────────────────────────────────────
+
+
+async def create_job(
+    client_id: str,
+    project_name: str,
+    description: str,
+    zip_code: str,
+    trade_type: str = "general",
+) -> dict:
+    """
+    Create a new job wiki page at prospect status.
+    Also creates the client page if it doesn't exist yet.
+    Returns dict with job_slug and status.
+    """
+    today = date.today().isoformat()
+    slug = _make_job_slug(client_id, project_name, today)
+    page_path = JOBS_DIR / f"{slug}.md"
+
+    # LLM writes the initial page body (title + scope)
+    body = await _synthesize(
+        context=(
+            f"Project: {project_name}\n"
+            f"Client: {client_id}\n"
+            f"Description: {description}\n"
+            f"Location ZIP: {zip_code}\n"
+            f"Trade: {trade_type}"
+        ),
+        instruction=(
+            "Write the initial wiki page for this job. Include:\n"
+            "1. A markdown H1 title combining the project name and location\n"
+            "2. A ## Scope section summarizing the project description\n"
+            "3. A ## Links section with a wikilink to the client page: [[clients/{client_id}]]\n"
+            "Do not include frontmatter."
+        ).format(client_id=client_id),
+    )
+
+    meta = {
+        "status": "prospect",
+        "client": client_id,
+        "date": today,
+        "trade": trade_type,
+        "zip": zip_code,
+        "our_bid": None,
+        "estimate_total": None,
+        "estimate_low": None,
+        "estimate_high": None,
+        "tournament_id": None,
+        "winner_personality": None,
+        "band_low": None,
+        "band_high": None,
+        "actual_cost": None,
+        "outcome_date": None,
+    }
+
+    _write_page(page_path, meta, body)
+
+    # Ensure client page exists
+    _ensure_client_page(client_id)
+
+    return {"job_slug": slug, "status": "prospect"}
+
+
+def _ensure_client_page(client_id: str) -> None:
+    """Create a minimal client page if one doesn't exist yet."""
+    client_path = CLIENTS_DIR / f"{client_id}.md"
+    if client_path.exists():
+        # Increment total_jobs counter
+        meta, body = _parse_frontmatter(client_path)
+        meta["total_jobs"] = meta.get("total_jobs", 0) + 1
+        _write_page(client_path, meta, body)
+        return
+
+    meta = {
+        "client_id": client_id,
+        "first_job": date.today().isoformat(),
+        "total_jobs": 1,
+        "wins": 0,
+        "losses": 0,
+    }
+    body = (
+        f"# {client_id}\n\n"
+        "## Profile\nNew client — profile will be enriched as jobs progress.\n\n"
+        "## Recent Jobs\n\n"
+        "## Patterns\nInsufficient data for pattern analysis.\n"
+    )
+    _write_page(client_path, meta, body)
+
+
 def _make_job_slug(client_id: str, project_name: str, date_str: str) -> str:
     """
     Generate a kebab-case job slug: YYYY-MM-DD-{client}-{short-description}.

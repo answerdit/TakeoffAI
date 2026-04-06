@@ -134,3 +134,67 @@ async def test_synthesize_missing_schema(tmp_path, monkeypatch):
 
     result = await wm._synthesize(context="test", instruction="write something")
     assert result == "Some content."
+
+
+@pytest.mark.anyio
+async def test_create_job_writes_page(tmp_path, monkeypatch):
+    """create_job should write a job page with prospect status and LLM scope."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="# Acme Parking Garage\n\n## Scope\nA 3-level precast parking structure.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    result = await wm.create_job(
+        client_id="acme",
+        project_name="Parking Garage",
+        description="3-level precast parking structure, 420 spaces",
+        zip_code="78701",
+        trade_type="concrete",
+    )
+
+    assert result["status"] == "prospect"
+    assert "job_slug" in result
+
+    # Verify page was written
+    page_path = (tmp_path / "jobs" / f"{result['job_slug']}.md")
+    assert page_path.exists()
+    meta, body = wm._parse_frontmatter(page_path)
+    assert meta["status"] == "prospect"
+    assert meta["client"] == "acme"
+    assert meta["zip"] == "78701"
+    assert "Scope" in body
+
+
+@pytest.mark.anyio
+async def test_create_job_creates_client_page_if_missing(tmp_path, monkeypatch):
+    """create_job should create a client page if one doesn't exist yet."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="# Job Page\n\n## Scope\nSomething.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    await wm.create_job(
+        client_id="newclient",
+        project_name="First Job",
+        description="A brand new project for a new client",
+        zip_code="76801",
+        trade_type="general",
+    )
+
+    client_page = tmp_path / "clients" / "newclient.md"
+    assert client_page.exists()
+    meta, _ = wm._parse_frontmatter(client_page)
+    assert meta["client_id"] == "newclient"
+    assert meta["total_jobs"] == 1
