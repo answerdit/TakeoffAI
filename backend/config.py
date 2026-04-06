@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_port: int = 8000
     claude_model: str = "claude-sonnet-4-6"
+    wiki_model: str = "claude-haiku-4-5"
     db_path: str = str(_DATA_DIR / "takeoffai.db")
 
 
