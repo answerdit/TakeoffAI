@@ -444,6 +444,13 @@
 
     .total-row.grand span:last-child { font-variant-numeric: tabular-nums; }
 
+    .total-row.range {
+      font-size: 0.78rem;
+      border-top: 1px dashed var(--border);
+      padding-top: 5px;
+      margin-top: 3px;
+    }
+
     /* ── Scenario cards ─────────────────────────────────────────── */
     .scenarios-grid {
       display: grid;
@@ -1072,6 +1079,14 @@
 
     // Totals
     const totalsEl = document.getElementById('est-totals');
+    const rangeRow = (data.estimate_low != null && data.estimate_high != null
+                  && !isNaN(data.estimate_low) && !isNaN(data.estimate_high))
+      ? `<div class="total-row range">
+           <span>Est. Range</span>
+           <span>${fmt$(data.estimate_low)} \u2013 ${fmt$(data.estimate_high)}</span>
+         </div>`
+      : '';
+
     totalsEl.innerHTML = `
       <div class="total-row subtotal">
         <span>Subtotal</span>
@@ -1089,6 +1104,7 @@
         <span>TOTAL BID</span>
         <span>${fmt$(data.total_bid)}</span>
       </div>
+      ${rangeRow}
     `;
 
     // Notes
