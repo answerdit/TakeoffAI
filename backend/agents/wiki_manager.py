@@ -367,10 +367,12 @@ async def cascade_outcome(
 ) -> None:
     """
     Full cascade on outcome (won/lost/closed).
+    Step 1 (job page) is required — raises on failure, cascade aborts.
+    Steps 2–3 (client, personality) are best-effort — logged and skipped on failure.
     Step 1: Update job page
     Step 2: Update client page
     Step 3: Update personality pages
-    Step 4: Update material pages (if flagged — checked via frontmatter)
+    Step 4: Update material pages (triggered by PriceVerifier separately)
     """
     page_path = JOBS_DIR / f"{job_slug}.md"
     if not page_path.exists():
@@ -480,7 +482,7 @@ async def _update_personality_page(
         meta["wins"] = meta.get("wins", 0) + 1
     meta["total_tournaments"] = meta.get("total_tournaments", 0) + 1
 
-    total = meta.get("total_tournaments", 1)
+    total = meta["total_tournaments"]
     meta["win_rate"] = round(meta.get("wins", 0) / total, 4) if total > 0 else 0.0
 
     updated_body = await _synthesize(
