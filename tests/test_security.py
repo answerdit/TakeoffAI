@@ -159,3 +159,17 @@ async def test_rate_limiter_returns_429_after_burst(monkeypatch):
             )
             statuses.append(resp.status_code)
     assert 429 in statuses, f"Expected at least one 429, got: {set(statuses)}"
+
+
+# ── Fix 9: Health endpoint info-leak ───────────────────────────────────────
+
+@pytest.mark.anyio
+async def test_health_degraded_does_not_leak_reason(monkeypatch):
+    """Degraded health response must not include a 'reason' field."""
+    import backend.config as cfg
+    monkeypatch.setattr(cfg.settings, "anthropic_api_key", "")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get("/api/health")
+    data = resp.json()
+    assert data["status"] == "degraded"
+    assert "reason" not in data

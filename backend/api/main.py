@@ -110,12 +110,12 @@ async def _run_migrations(db: aiosqlite.Connection) -> None:
             continue
         try:
             await db.execute(migration_sql)
-            await db.execute(f"PRAGMA user_version = {version}")
+            await db.execute(f"PRAGMA user_version = {int(version)}")
             await db.commit()
         except Exception as e:
             # Column may already exist (e.g., from manual schema work)
             if "duplicate column" in str(e).lower():
-                await db.execute(f"PRAGMA user_version = {version}")
+                await db.execute(f"PRAGMA user_version = {int(version)}")
                 await db.commit()
             else:
                 raise
@@ -181,5 +181,5 @@ app.include_router(verification_router, prefix="/api", dependencies=[Depends(ver
 async def health():
     from backend.config import settings
     if not settings.anthropic_api_key or settings.anthropic_api_key == "sk-ant-your-key-here":
-        return {"status": "degraded", "reason": "ANTHROPIC_API_KEY not configured", "product": "TakeoffAI", "company": "answerd.it"}
+        return {"status": "degraded", "product": "TakeoffAI", "company": "answerd.it"}
     return {"status": "ok", "product": "TakeoffAI", "company": "answerd.it"}
