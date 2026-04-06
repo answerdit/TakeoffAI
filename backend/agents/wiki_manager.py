@@ -513,51 +513,54 @@ async def update_material_page(
     """
     Create or update a material wiki page from PriceVerifier data.
     """
-    filename = re.sub(r"[^a-zA-Z0-9\s-]", "", item)
-    filename = re.sub(r"[\s-]+", "-", filename).strip("-").lower()
-    page_path = MATERIALS_DIR / f"{filename}.md"
+    try:
+        filename = re.sub(r"[^a-zA-Z0-9\s-]", "", item.replace("_", "-"))
+        filename = re.sub(r"[\s-]+", "-", filename).strip("-").lower()
+        page_path = MATERIALS_DIR / f"{filename}.md"
 
-    today = date.today().isoformat()
+        today = date.today().isoformat()
 
-    if page_path.exists():
-        meta, body = _read_page(page_path)
-        meta["last_verified"] = today
-        meta["verified_mid"] = verified_mid
-        meta["deviation_pct"] = deviation_pct
-    else:
-        meta = {
-            "material": item.lower(),
-            "category": category,
-            "last_verified": today,
-            "seed_low": None,
-            "seed_high": None,
+        if page_path.exists():
+            meta, body = _read_page(page_path)
+            meta["last_verified"] = today
+            meta["verified_mid"] = verified_mid
+            meta["deviation_pct"] = deviation_pct
+        else:
+            meta = {
+                "material": item.lower(),
+                "category": category,
+                "last_verified": today,
+                "seed_low": None,
+                "seed_high": None,
+                "verified_mid": verified_mid,
+                "deviation_pct": deviation_pct,
+            }
+            body = ""
+
+        context_data = {
+            "item": item,
+            "unit": unit,
+            "ai_unit_cost": ai_unit_cost,
             "verified_mid": verified_mid,
             "deviation_pct": deviation_pct,
         }
-        body = ""
+        updated_body = await _synthesize(
+            context=(
+                f"Current page:\n{body}\n\n"
+                f"New verification data:\n{json.dumps(context_data)}"
+            ),
+            instruction=(
+                "Write or update this material page. Include:\n"
+                "- ## Current Pricing — verified price, AI price, deviation\n"
+                "- ## Deviation History — add this data point to the trend\n"
+                "- ## Job Impact — note which jobs used this material (if known)\n"
+                "Keep existing content and add the new data point."
+            ),
+        )
 
-    context_data = {
-        "item": item,
-        "unit": unit,
-        "ai_unit_cost": ai_unit_cost,
-        "verified_mid": verified_mid,
-        "deviation_pct": deviation_pct,
-    }
-    updated_body = await _synthesize(
-        context=(
-            f"Current page:\n{body}\n\n"
-            f"New verification data:\n{json.dumps(context_data)}"
-        ),
-        instruction=(
-            "Write or update this material page. Include:\n"
-            "- ## Current Pricing — verified price, AI price, deviation\n"
-            "- ## Deviation History — add this data point to the trend\n"
-            "- ## Job Impact — note which jobs used this material (if known)\n"
-            "Keep existing content and add the new data point."
-        ),
-    )
-
-    _write_page(page_path, meta, updated_body)
+        _write_page(page_path, meta, updated_body)
+    except Exception:
+        logger.exception("update_material_page: failed for item %s", item)
 
 
 # ── Lint ─────────────────────────────────────────────────────────────────────
@@ -569,7 +572,7 @@ _REQUIRED_FRONTMATTER = {
     "materials": ["material"],
 }
 
-_STALE_STATUSES = {"prospect", "estimated", "tournament-complete"}
+_STALE_STATUSES = {"estimated", "tournament-complete"}
 _STALE_DAYS = 30
 
 
@@ -588,6 +591,8 @@ def lint() -> dict:
     stale_jobs = []
     frontmatter_errors = []
 
+    # Root-level files (SCHEMA.md, DASHBOARD.md) are excluded from lint — they are
+    # conventions docs, not job/client/personality/material pages.
     for subdir in [JOBS_DIR, CLIENTS_DIR, MATERIALS_DIR, PERSONALITIES_DIR]:
         if not subdir.exists():
             continue
@@ -629,7 +634,7 @@ def lint() -> dict:
                     pass
 
         for match in re.finditer(r"\[\[([^\]]+)\]\]", body):
-            link_target = match.group(1)
+            link_target = match.group(1).split("|")[0].strip()
             all_links.append((rel, link_target))
             inbound.add(link_target)
 
