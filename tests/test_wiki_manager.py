@@ -170,6 +170,15 @@ async def test_create_job_writes_page(tmp_path, monkeypatch):
     assert meta["zip"] == "78701"
     assert "Scope" in body
 
+    nullable_fields = [
+        "our_bid", "estimate_total", "estimate_low", "estimate_high",
+        "tournament_id", "winner_personality", "band_low", "band_high",
+        "actual_cost", "outcome_date",
+    ]
+    for field in nullable_fields:
+        assert field in meta
+        assert meta[field] is None
+
 
 @pytest.mark.anyio
 async def test_create_job_creates_client_page_if_missing(tmp_path, monkeypatch):
