@@ -1,21 +1,21 @@
 item,unit,low_cost,high_cost,trade_category
-Framing Lumber (2x4x8),LF,0.45,0.75,Framing
-OSB Sheathing (7/16"),SF,0.55,0.85,Framing
+Framing Lumber (2x4x8),LF,0.99,1.02,Framing
+"OSB Sheathing (7/16"")",SF,0.55,0.85,Framing
 Engineered LVL Beam,LF,8.50,14.00,Framing
 Concrete (3000 PSI),CY,135.00,175.00,Concrete
 Rebar (#4),LF,0.65,0.90,Concrete
-Concrete Block (8" CMU),EA,2.25,3.50,Masonry
-Drywall (1/2" 4x8),SF,0.45,0.70,Drywall
+"Concrete Block (8"" CMU)",EA,2.25,3.50,Masonry
+"Drywall (1/2"" 4x8)",SF,0.45,0.70,Drywall
 Joint Compound,GAL,12.00,18.00,Drywall
 Asphalt Shingles (30yr),SQ,95.00,145.00,Roofing
 Roofing Felt (15lb),SQ,12.00,18.00,Roofing
 Ice & Water Shield,SQ,65.00,90.00,Roofing
 Romex Wire (12/2),LF,0.75,1.10,Electrical
-PVC Conduit (1"),LF,1.20,1.80,Electrical
+"PVC Conduit (1"")",LF,1.20,1.80,Electrical
 Electrical Panel (200A),EA,850.00,1400.00,Electrical
-PVC DWV Pipe (4"),LF,4.50,7.00,Plumbing
-Copper Pipe (3/4"),LF,3.25,5.50,Plumbing
+"PVC DWV Pipe (4"")",LF,4.50,7.00,Plumbing
+"Copper Pipe (3/4"")",LF,3.25,5.50,Plumbing
 Interior Latex Paint,GAL,28.00,48.00,Painting
 Primer (Drywall),GAL,18.00,30.00,Painting
 Fiberglass Insulation (R-19),SF,0.55,0.85,Insulation
-HVAC Ductwork (Round 8"),LF,6.50,11.00,Mechanical
+"HVAC Ductwork (Round 8"")",LF,6.50,11.00,Mechanical

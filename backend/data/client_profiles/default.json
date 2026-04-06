@@ -1,0 +1,48 @@
+{
+  "client_id": "default",
+  "created_at": "2026-03-31T20:06:39.165211",
+  "winning_examples": [],
+  "agent_elo": {
+    "conservative": 1000,
+    "balanced": 1000,
+    "aggressive": 1000,
+    "historical_match": 1000,
+    "market_beater": 1000
+  },
+  "stats": {
+    "total_tournaments": 0,
+    "win_rate_by_agent": {
+      "conservative": 0.0,
+      "balanced": 0.0,
+      "aggressive": 0.0,
+      "historical_match": 0.0,
+      "market_beater": 0.0
+    },
+    "avg_winning_bid": 0.0,
+    "avg_winning_margin": 0.0,
+    "wins_by_agent": {
+      "conservative": 0,
+      "balanced": 0,
+      "aggressive": 0,
+      "historical_match": 0,
+      "market_beater": 0
+    }
+  },
+  "excluded_agents": [
+    "aggressive"
+  ],
+  "calibration": {
+    "win_prob_predictions": [],
+    "win_prob_actuals": [],
+    "brier_score": null,
+    "confidence_accuracy": {},
+    "agent_deviation_history": {
+      "conservative": [],
+      "balanced": [],
+      "aggressive": [],
+      "historical_match": [],
+      "market_beater": []
+    },
+    "red_flagged_agents": []
+  }
+}

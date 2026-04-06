@@ -12,6 +12,8 @@ from typing import Optional
 
 import aiosqlite
 
+from backend.agents.price_verifier import verify_line_items
+
 DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
 AUTO_MODE_MIN_TOURNAMENTS = 20
 
@@ -160,6 +162,29 @@ async def judge_tournament(
     if client_id and winner_entry:
         from backend.agents.feedback_loop import update_client_profile
         await asyncio.to_thread(update_client_profile, client_id, winner_entry)
+
+    # ── Auto-evolve harness if one agent is dominating ────────────────────────
+    if client_id and winner_entry:
+        from backend.agents.harness_evolver import check_dominance, evolve_harness
+        if check_dominance(client_id):
+            asyncio.create_task(evolve_harness(client_id))
+
+    # ── Background price verification of winning estimate ─────────────────────
+    if winner_entry:
+        raw_estimate = winner_entry.get("line_items_json", "{}")
+        try:
+            estimate = json.loads(raw_estimate) if isinstance(raw_estimate, str) else raw_estimate
+        except Exception:
+            estimate = {}
+        line_items = estimate.get("line_items", [])
+        if line_items:
+            asyncio.create_task(
+                verify_line_items(
+                    line_items=line_items,
+                    triggered_by="background",
+                    tournament_id=tournament_id,
+                )
+            )
 
     return {
         "tournament_id": tournament_id,

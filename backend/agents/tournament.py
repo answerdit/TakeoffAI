@@ -7,12 +7,16 @@ collapsing results to a median-consensus entry per personality.
 import asyncio
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import aiosqlite
 
 from backend.agents.pre_bid_calc import run_prebid_calc_with_modifier
 from backend.config import settings
+
+DB_PATH = settings.db_path
+TRACES_DIR = Path(__file__).parent.parent / "data" / "traces"
 
 # ── Personality system-prompt modifiers ───────────────────────────────────────
 
@@ -176,8 +180,14 @@ async def _save_entries(
     db: aiosqlite.Connection,
     tournament_id: int,
     results: list[AgentResult],
-    consensus_keys: set[tuple],
+    consensus_keys: set[tuple] = frozenset(),
+    client_id: Optional[str] = None,
+    description: str = "",
+    zip_code: str = "",
 ) -> None:
+    import logging
+    from datetime import datetime, timezone
+
     for result in results:
         is_consensus = 1 if (
             result.agent_name, result.total_bid, result.temperature, result.sample_index
@@ -196,6 +206,32 @@ async def _save_entries(
             ),
         )
     await db.commit()
+
+    # Write trace files — best-effort, must not break tournament
+    if client_id:
+        logger = logging.getLogger(__name__)
+        trace_dir = TRACES_DIR / str(tournament_id)
+        try:
+            trace_dir.mkdir(parents=True, exist_ok=True)
+            for result in results:
+                trace = {
+                    "tournament_id": tournament_id,
+                    "agent_name": result.agent_name,
+                    "client_id": client_id,
+                    "project_description": description,
+                    "zip_code": zip_code,
+                    "won": False,
+                    "score": None,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "estimate": result.estimate,
+                }
+                (trace_dir / f"{result.agent_name}.json").write_text(
+                    json.dumps(trace, indent=2)
+                )
+        except Exception as exc:
+            logger.warning(
+                "Failed to write trace files for tournament %s: %s", tournament_id, exc
+            )
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -231,8 +267,19 @@ async def run_tournament(
         except Exception:
             pass
 
+    # Load excluded agents for this client
+    excluded_agents: list[str] = []
+    if client_id:
+        from backend.agents.feedback_loop import _profile_path
+        _prof_path = _profile_path(client_id)
+        if _prof_path.exists():
+            import json as _json
+            _prof = _json.loads(_prof_path.read_text())
+            excluded_agents = _prof.get("excluded_agents", [])
+
+    agents_to_run = [name for name in personalities if name not in excluded_agents]
     tasks = []
-    for name in personalities:
+    for name in agents_to_run:
         modifier = PERSONALITY_PROMPTS[name]
         if name == "historical_match" and client_context:
             modifier = modifier + f"\n\n{client_context}"
@@ -254,9 +301,9 @@ async def run_tournament(
     # Build a key set for marking consensus entries in the DB
     consensus_keys = {(e.agent_name, e.total_bid, e.temperature, e.sample_index) for e in consensus}
 
-    async with aiosqlite.connect(settings.db_path) as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         tournament_id = await _save_tournament(db, client_id, description, zip_code)
-        await _save_entries(db, tournament_id, results, consensus_keys)
+        await _save_entries(db, tournament_id, results, consensus_keys, client_id, description, zip_code)
 
     return TournamentResult(
         tournament_id=tournament_id,

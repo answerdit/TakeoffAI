@@ -3,7 +3,11 @@ TakeoffAI — Application configuration via pydantic-settings.
 Reads from environment variables and .env file.
 """
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DATA_DIR = Path(__file__).parent / "data"
 
 
 class Settings(BaseSettings):
@@ -15,10 +19,13 @@ class Settings(BaseSettings):
     )
 
     anthropic_api_key: str = ""
+    api_key: str = ""
     default_overhead_pct: float = 20.0
     default_margin_pct: float = 12.0
     app_env: str = "development"
     api_port: int = 8000
+    claude_model: str = "claude-sonnet-4-6"
+    db_path: str = str(_DATA_DIR / "takeoffai.db")
 
 
 settings = Settings()

@@ -114,7 +114,7 @@ FAKE_ESTIMATE = {
 async def test_run_tournament_grid_shape(tmp_path, monkeypatch):
     """With n_samples=1, run_tournament should produce 5×3 = 15 raw entries."""
     monkeypatch.setattr(
-        "backend.agents.tournament.settings.db_path",
+        "backend.agents.tournament.DB_PATH",
         str(tmp_path / "test.db"),
     )
 
@@ -151,7 +151,7 @@ async def test_run_tournament_grid_shape(tmp_path, monkeypatch):
 async def test_run_tournament_n_samples_2(tmp_path, monkeypatch):
     """Default n_samples=2 produces 5×3×2 = 30 raw entries."""
     monkeypatch.setattr(
-        "backend.agents.tournament.settings.db_path",
+        "backend.agents.tournament.DB_PATH",
         str(tmp_path / "test.db"),
     )
 
@@ -188,7 +188,7 @@ async def test_run_tournament_n_samples_2(tmp_path, monkeypatch):
 async def test_run_tournament_entries_have_temperature(tmp_path, monkeypatch):
     """Each raw entry must carry the temperature it was called with."""
     monkeypatch.setattr(
-        "backend.agents.tournament.settings.db_path",
+        "backend.agents.tournament.DB_PATH",
         str(tmp_path / "test.db"),
     )
 
