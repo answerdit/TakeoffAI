@@ -1776,6 +1776,12 @@
   dropZone.addEventListener('dragleave', () => {
     dropZone.style.borderColor = 'var(--border)';
   });
+  dropZone.addEventListener('mouseenter', () => {
+    dropZone.style.borderColor = 'var(--amber)';
+  });
+  dropZone.addEventListener('mouseleave', () => {
+    dropZone.style.borderColor = 'var(--border)';
+  });
   dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.style.borderColor = 'var(--border)';
@@ -1786,7 +1792,7 @@
   btn.addEventListener('click', async () => {
     if (!selectedFile) return;
     btn.disabled    = true;
-    btn.textContent = 'Processing…';
+    btn.innerHTML = '<span class="spinner"></span> Processing…';
     clearError();
     notice.style.display = 'none';
 
