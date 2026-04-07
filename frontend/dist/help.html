@@ -376,6 +376,7 @@
     <a href="#overview">What Is TakeoffAI?</a>
     <a href="#getting-started">Getting Started</a>
     <a href="#estimate">Pre-Bid Estimate</a>
+    <a class="sub" href="#blueprint-pdf">Blueprint PDF</a>
     <a class="sub" href="#writing-descriptions">Writing Descriptions</a>
     <a class="sub" href="#confidence-band">Confidence Band</a>
     <a href="#bid-strategy">Bid Strategy</a>
@@ -427,6 +428,25 @@
       <li><strong>Set Overhead % and Margin %</strong> using the sliders (defaults: 20% overhead, 12% margin). Applied on top of direct costs to arrive at your total bid number.</li>
       <li><strong>Click Calculate Estimate.</strong></li>
     </ol>
+
+    <!-- ── Blueprint PDF ──────────────────────────────────── -->
+    <h3 id="blueprint-pdf">Blueprint PDF — Auto-Fill from Plans</h3>
+
+    <p>If you have a blueprint PDF in hand, you can skip writing the description yourself. Drop the PDF into the estimate tab and let TakeoffAI extract a draft for you.</p>
+
+    <ol>
+      <li><strong>Drop the PDF</strong> onto the drop zone above the description field, or click it to browse. Supports PDFs up to 32MB — 1–5 pages works best.</li>
+      <li><strong>Click Preprocess PDF.</strong> Claude reads the plans as a native document (not scanned text) and extracts dimensions, room counts, materials, and scope of work.</li>
+      <li><strong>Review and edit the draft</strong> — an amber notice appears below the field reminding you it's a starting point, not a finished description. Correct anything the plans didn't show clearly.</li>
+      <li><strong>Run the estimate as normal.</strong> The preprocessing step only fills the description field — the rest of the estimate flow is unchanged.</li>
+    </ol>
+
+    <div class="callout" style="background:#1c1a00;border-color:#a16207;margin-top:1rem">
+      <strong style="color:#f59e0b">What works well:</strong> Floor plans, site plans, spec sheets, and simple bid sets (1–5 pages). The AI leads with the most important number for your trade — total sqft, CY, LF, or unit count — and follows with structural system, scope, room counts, and exclusions noted in the plans.<br><br>
+      <strong style="color:#f59e0b">What to verify:</strong> Dimensions not clearly labeled, finishes called out only in a legend, and any items the plans show but don't quantify. The AI omits rather than guesses — fill in anything it left out.
+    </div>
+
+    <p style="margin-top:1rem">If a job is open in Job Tracking when you preprocess, the extracted draft is automatically saved to that job's wiki Scope section.</p>
 
     <h3>Reading the Results</h3>
     <div class="table-wrap">
