@@ -106,8 +106,8 @@ _MAX_PDF_BYTES = 32 * 1024 * 1024  # 32 MB
 async def estimate_preprocess_pdf(
     request: Request,
     pdf: UploadFile = File(...),
-    zip_code: str = Form(..., min_length=5, max_length=10),
-    trade_type: str = Form(default="general"),
+    zip_code: str = Form(default="", max_length=10),
+    trade_type: str = Form(default="general", max_length=50),
     job_slug: Optional[str] = Form(default=None),
 ):
     """

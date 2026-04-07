@@ -1803,7 +1803,7 @@
 
     const form = new FormData();
     form.append('pdf',        selectedFile);
-    form.append('zip_code',   zipCode || '00000');
+    form.append('zip_code',   zipCode);
     form.append('trade_type', tradeType);
     if (jobSlug) form.append('job_slug', jobSlug);
 

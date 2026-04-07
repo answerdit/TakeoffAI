@@ -32,6 +32,15 @@ WIKI_MODEL = os.getenv("WIKI_MODEL", settings.wiki_model)
 
 _anthropic = AsyncAnthropic()
 
+
+def _safe_job_path(job_slug: str) -> Path | None:
+    """Return the resolved job page path, or None if slug is unsafe."""
+    page_path = (JOBS_DIR / f"{job_slug}.md").resolve()
+    if not str(page_path).startswith(str(JOBS_DIR.resolve())):
+        logger.warning("Rejected unsafe job_slug: %s", job_slug)
+        return None
+    return page_path
+
 # ── Frontmatter helpers ──────────────────────────────────────────────────────
 
 
@@ -205,7 +214,9 @@ async def enrich_scope_from_blueprint(job_slug: str, draft_text: str) -> None:
     Fire-and-forget safe — all errors are caught and logged.
     """
     try:
-        page_path = JOBS_DIR / f"{job_slug}.md"
+        page_path = _safe_job_path(job_slug)
+        if page_path is None:
+            return
         if not page_path.exists():
             logger.warning("enrich_scope_from_blueprint: job page not found for %s", job_slug)
             return
@@ -274,7 +285,9 @@ async def enrich_estimate(job_slug: str, estimate_data: dict) -> None:
     No-op if the job page doesn't exist (fire-and-forget safe).
     """
     try:
-        page_path = JOBS_DIR / f"{job_slug}.md"
+        page_path = _safe_job_path(job_slug)
+        if page_path is None:
+            return
         if not page_path.exists():
             logger.debug("enrich_estimate: job page %s not found, skipping", job_slug)
             return
@@ -312,7 +325,9 @@ async def enrich_tournament(job_slug: str, tournament_data: dict) -> None:
     No-op if the job page doesn't exist.
     """
     try:
-        page_path = JOBS_DIR / f"{job_slug}.md"
+        page_path = _safe_job_path(job_slug)
+        if page_path is None:
+            return
         if not page_path.exists():
             logger.debug("enrich_tournament: job page %s not found, skipping", job_slug)
             return
@@ -360,7 +375,9 @@ async def record_bid_decision(
 ) -> None:
     """Append Bid Decision section and update status to bid-submitted."""
     try:
-        page_path = JOBS_DIR / f"{job_slug}.md"
+        page_path = _safe_job_path(job_slug)
+        if page_path is None:
+            return
         if not page_path.exists():
             logger.debug("record_bid_decision: job page %s not found, skipping", job_slug)
             return
@@ -405,7 +422,9 @@ async def cascade_outcome(
     Step 3: Update personality pages
     Step 4: Update material pages (triggered by PriceVerifier separately)
     """
-    page_path = JOBS_DIR / f"{job_slug}.md"
+    page_path = _safe_job_path(job_slug)
+    if page_path is None:
+        return
     if not page_path.exists():
         logger.warning("cascade_outcome: job page %s not found", job_slug)
         return

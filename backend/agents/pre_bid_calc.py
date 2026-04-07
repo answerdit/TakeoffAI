@@ -103,10 +103,10 @@ BLUEPRINT_EXTRACTION_SYSTEM = (
     "Do not use adjectives without numbers behind them."
 )
 
-# .format(zip_code=..., trade_type=...) at call time
+# .format(zip_note=..., trade_type=...) at call time
 BLUEPRINT_EXTRACTION_PROMPT = (
     "Review these construction plans and extract a project description "
-    "for a {trade_type} estimate. The project is located in zip code {zip_code}.\n\n"
+    "for a {trade_type} estimate. {zip_note}\n\n"
     "Structure your response in this order:\n"
     "1. Total size (sqft, CY, LF, or units — whichever is primary for this trade)\n"
     "2. Building type and occupancy\n"
@@ -156,7 +156,7 @@ async def preprocess_blueprint(
                     {
                         "type": "text",
                         "text": BLUEPRINT_EXTRACTION_PROMPT.format(
-                            zip_code=zip_code,
+                            zip_note=f"The project is located in zip code {zip_code}." if zip_code else "No zip code provided — omit location-specific cost adjustments.",
                             trade_type=trade_type,
                         ),
                     },
