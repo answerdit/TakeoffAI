@@ -704,6 +704,29 @@
       <div class="card-title">Project Details</div>
       <div class="form-grid" style="gap:1.1rem">
 
+        <!-- Blueprint PDF preprocessor -->
+        <div class="field full">
+          <label>Blueprint PDF <span style="color:var(--text-muted);font-weight:400">(optional — auto-fills description)</span></label>
+          <div id="pdf-drop-zone" style="
+            border:2px dashed var(--border);border-radius:8px;padding:1.5rem 2rem;
+            text-align:center;cursor:pointer;transition:border-color .2s;margin-bottom:.5rem
+          ">
+            <div style="color:var(--text-dim);font-size:.9rem">
+              Drop blueprint PDF here, or <span style="color:var(--amber);text-decoration:underline">click to browse</span>
+            </div>
+            <div style="font-size:.75rem;color:var(--text-muted);margin-top:.3rem">PDF · max 32MB · 1–5 pages works best</div>
+            <div id="pdf-filename" style="color:var(--green);margin-top:.4rem;font-size:.85rem"></div>
+            <input id="pdf-file-input" type="file" accept=".pdf" style="display:none">
+          </div>
+          <button id="btn-preprocess-pdf" class="btn btn-secondary btn-sm" style="display:none">
+            Preprocess PDF
+          </button>
+          <div id="pdf-error" style="display:none;font-size:.8rem;color:#f87171;margin-top:.3rem"></div>
+          <div id="pdf-draft-notice" style="display:none;font-size:.8rem;color:var(--amber);margin-top:.3rem">
+            Draft extracted from blueprint — review and edit before estimating
+          </div>
+        </div>
+
         <div class="field full">
           <label for="est-desc">Project Description</label>
           <textarea id="est-desc" placeholder="e.g. 2,400 sqft single-story commercial office build-out with open floor plan, 2 restrooms, break room. Includes framing, drywall, electrical, plumbing rough-in, and painting." rows="4"></textarea>
@@ -1707,6 +1730,100 @@
     ['m-name','m-zip','m-bid','m-winning','m-actual','m-notes'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('m-won').value = '';
   });
+
+// ── Blueprint PDF Preprocessor ─────────────────────────────────────────────
+(function () {
+  const dropZone   = document.getElementById('pdf-drop-zone');
+  const fileInput  = document.getElementById('pdf-file-input');
+  const filename   = document.getElementById('pdf-filename');
+  const btn        = document.getElementById('btn-preprocess-pdf');
+  const errBox     = document.getElementById('pdf-error');
+  const notice     = document.getElementById('pdf-draft-notice');
+  const descField  = document.getElementById('est-desc');
+  let   selectedFile = null;
+
+  function showError(msg) {
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+  }
+  function clearError() {
+    errBox.style.display  = 'none';
+    errBox.textContent    = '';
+  }
+
+  function setFile(file) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      showError('Only PDF files are accepted.');
+      return;
+    }
+    if (file.size > 32 * 1024 * 1024) {
+      showError('File too large. Maximum size is 32MB.');
+      return;
+    }
+    clearError();
+    selectedFile = file;
+    filename.textContent = file.name;
+    btn.style.display    = 'inline-block';
+    notice.style.display = 'none';
+  }
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--amber)';
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = 'var(--border)';
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--border)';
+    setFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+
+  btn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    btn.disabled    = true;
+    btn.textContent = 'Processing…';
+    clearError();
+    notice.style.display = 'none';
+
+    const zipCode   = document.getElementById('est-zip').value.trim();
+    const tradeType = document.getElementById('est-trade').value;
+    const jobSlug   = sessionStorage.getItem('activeJobSlug') || '';
+
+    const form = new FormData();
+    form.append('pdf',        selectedFile);
+    form.append('zip_code',   zipCode || '00000');
+    form.append('trade_type', tradeType);
+    if (jobSlug) form.append('job_slug', jobSlug);
+
+    const apiKey = document.getElementById('hdr-api-key')?.value?.trim() || '';
+
+    try {
+      const resp = await fetch('/api/estimate/preprocess-pdf', {
+        method:  'POST',
+        headers: apiKey ? { 'X-API-Key': apiKey } : {},
+        body:    form,
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        showError(data.detail || `Error ${resp.status}`);
+      } else {
+        descField.value      = data.draft || '';
+        notice.style.display = data.draft ? 'block' : 'none';
+        if (!data.draft) showError('No content extracted — try a different PDF.');
+      }
+    } catch (err) {
+      showError('Request failed. Check your connection and try again.');
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = 'Preprocess PDF';
+    }
+  });
+})();
 </script>
 </body>
 </html>
