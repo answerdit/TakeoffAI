@@ -199,6 +199,34 @@ async def create_job(
     return {"job_slug": slug, "status": "prospect"}
 
 
+async def enrich_scope_from_blueprint(job_slug: str, draft_text: str) -> None:
+    """
+    Overwrite the ## Scope section of a job page with blueprint-extracted draft text.
+    Fire-and-forget safe — all errors are caught and logged.
+    """
+    try:
+        page_path = JOBS_DIR / f"{job_slug}.md"
+        if not page_path.exists():
+            logger.warning("enrich_scope_from_blueprint: job page not found for %s", job_slug)
+            return
+
+        meta, body = _parse_frontmatter(page_path)
+
+        # Replace existing ## Scope section, or prepend one if absent
+        scope_section = f"## Scope\n\n{draft_text.strip()}"
+        scope_pattern = re.compile(r"## Scope\n[\s\S]*?(?=\n## |\Z)", re.MULTILINE)
+
+        if scope_pattern.search(body):
+            body = scope_pattern.sub(scope_section, body, count=1)
+        else:
+            body = scope_section + "\n\n" + body.lstrip()
+
+        _write_page(page_path, meta, body)
+        logger.info("enrich_scope_from_blueprint: updated Scope for %s", job_slug)
+    except Exception:
+        logger.exception("enrich_scope_from_blueprint failed for %s (non-fatal)", job_slug)
+
+
 def _ensure_client_page(client_id: str) -> None:
     """Create a minimal client page if one doesn't exist yet."""
     client_path = CLIENTS_DIR / f"{client_id}.md"
