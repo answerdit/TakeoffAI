@@ -265,3 +265,58 @@ async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
             import asyncio
             await asyncio.sleep(0.1)
             mock_enrich.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_preprocess_pdf_wrong_type(monkeypatch):
+    """Non-PDF bytes (missing %PDF- magic bytes) should return 400."""
+    monkeypatch.setenv("API_KEY", "test-key")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post(
+            "/api/estimate/preprocess-pdf",
+            files={"pdf": ("plans.pdf", b"not a pdf file content", "application/pdf")},
+            data={"zip_code": "76801", "trade_type": "general"},
+            headers={"X-API-Key": "test-key"},
+        )
+    assert resp.status_code == 400
+    assert "PDF" in resp.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_preprocess_pdf_too_large(monkeypatch):
+    """File over 32MB should return 400."""
+    monkeypatch.setenv("API_KEY", "test-key")
+    oversized = b"%PDF-1.4" + b"x" * (32 * 1024 * 1024 + 1)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post(
+            "/api/estimate/preprocess-pdf",
+            files={"pdf": ("big.pdf", oversized, "application/pdf")},
+            data={"zip_code": "76801", "trade_type": "general"},
+            headers={"X-API-Key": "test-key"},
+        )
+    assert resp.status_code == 400
+    assert "32MB" in resp.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_preprocess_pdf_success(monkeypatch):
+    """Valid PDF with mocked Claude call should return a draft string."""
+    monkeypatch.setenv("API_KEY", "test-key")
+    minimal_pdf = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF"
+
+    with patch(
+        "backend.api.routes.preprocess_blueprint",
+        new=AsyncMock(return_value="18,000 sqft 3-story commercial office building"),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                "/api/estimate/preprocess-pdf",
+                files={"pdf": ("plans.pdf", minimal_pdf, "application/pdf")},
+                data={"zip_code": "76801", "trade_type": "general"},
+                headers={"X-API-Key": "test-key"},
+            )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "draft" in data
+    assert "18,000 sqft" in data["draft"]
