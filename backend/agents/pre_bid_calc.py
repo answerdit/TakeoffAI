@@ -6,6 +6,7 @@ Inputs:  project description (text), zip code, trade type, overhead %, margin %
 Outputs: line-item estimate with materials, labor, burden, overhead, margin, total
 """
 
+import base64
 import csv
 from pathlib import Path
 
@@ -102,6 +103,7 @@ BLUEPRINT_EXTRACTION_SYSTEM = (
     "Do not use adjectives without numbers behind them."
 )
 
+# .format(zip_code=..., trade_type=...) at call time
 BLUEPRINT_EXTRACTION_PROMPT = (
     "Review these construction plans and extract a project description "
     "for a {trade_type} estimate. The project is located in zip code {zip_code}.\n\n"
@@ -128,12 +130,16 @@ async def preprocess_blueprint(
     Send a blueprint PDF to Claude and extract an estimate-ready project description.
     Returns plain text draft suitable for the Pre-Bid Estimate description field.
     """
-    import base64
     from backend.config import settings
+
+    if not pdf_bytes:
+        raise ValueError("pdf_bytes must not be empty")
+
+    encoded = base64.standard_b64encode(pdf_bytes).decode("utf-8")
 
     response = await client.messages.create(
         model=settings.claude_model,
-        max_tokens=1024,
+        max_tokens=1024,  # prompt caps output at ~200 words; 1024 is sufficient
         system=BLUEPRINT_EXTRACTION_SYSTEM,
         messages=[
             {
@@ -144,7 +150,7 @@ async def preprocess_blueprint(
                         "source": {
                             "type": "base64",
                             "media_type": "application/pdf",
-                            "data": base64.standard_b64encode(pdf_bytes).decode("utf-8"),
+                            "data": encoded,
                         },
                     },
                     {
@@ -158,6 +164,9 @@ async def preprocess_blueprint(
             }
         ],
     )
+
+    if not response.content:
+        raise ValueError("Empty response from Claude on blueprint extraction")
     return response.content[0].text.strip()
 
 
