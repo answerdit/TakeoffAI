@@ -89,6 +89,77 @@ Always return valid JSON in this exact format — no markdown fences, no extra t
   "notes": "..."
 }}"""
 
+# ── Blueprint extraction prompts ──────────────────────────────────────────────
+
+BLUEPRINT_EXTRACTION_SYSTEM = (
+    "You are a construction takeoff assistant for TakeoffAI by answerd.it. "
+    "Your job is to read construction plans and extract a plain-English project description "
+    "that a cost estimator can use to generate a line-item bid estimate.\n\n"
+    "Write in the voice of an experienced contractor describing the job to their estimator. "
+    "Be specific and quantitative. Lead with the single most important number "
+    "(total sqft, CY, LF, or units — whichever is primary for this trade). "
+    "Do not include contract terms, owner names, bid dates, or submission requirements. "
+    "Do not use adjectives without numbers behind them."
+)
+
+BLUEPRINT_EXTRACTION_PROMPT = (
+    "Review these construction plans and extract a project description "
+    "for a {trade_type} estimate. The project is located in zip code {zip_code}.\n\n"
+    "Structure your response in this order:\n"
+    "1. Total size (sqft, CY, LF, or units — whichever is primary for this trade)\n"
+    "2. Building type and occupancy\n"
+    "3. Structural system and key materials called out in the plans\n"
+    "4. Scope of work — what is being built or installed\n"
+    "5. Room counts or system counts (fixtures, panels, openings, etc.)\n"
+    "6. Site conditions or access constraints visible in the plans\n"
+    "7. Explicit exclusions noted in the plans or specs\n\n"
+    "Write as a single paragraph or short bulleted list. Keep it under 200 words. "
+    "If a dimension or quantity is not clearly shown in the plans, "
+    "omit it rather than guess."
+)
+
+
+async def preprocess_blueprint(
+    pdf_bytes: bytes,
+    zip_code: str,
+    trade_type: str = "general",
+) -> str:
+    """
+    Send a blueprint PDF to Claude and extract an estimate-ready project description.
+    Returns plain text draft suitable for the Pre-Bid Estimate description field.
+    """
+    import base64
+    from backend.config import settings
+
+    response = await client.messages.create(
+        model=settings.claude_model,
+        max_tokens=1024,
+        system=BLUEPRINT_EXTRACTION_SYSTEM,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": base64.standard_b64encode(pdf_bytes).decode("utf-8"),
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": BLUEPRINT_EXTRACTION_PROMPT.format(
+                            zip_code=zip_code,
+                            trade_type=trade_type,
+                        ),
+                    },
+                ],
+            }
+        ],
+    )
+    return response.content[0].text.strip()
+
 
 # ── Agent entry point ─────────────────────────────────────────────────────────
 
