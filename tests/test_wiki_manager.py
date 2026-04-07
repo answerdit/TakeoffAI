@@ -542,3 +542,20 @@ def test_lint_validates_frontmatter(tmp_path, monkeypatch):
 
     report = wm.lint()
     assert len(report["frontmatter_errors"]) >= 1
+
+
+def test_seed_personality_page(tmp_path, monkeypatch):
+    """_seed_personality_page should create a page from PERSONALITY_PROMPTS."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "PERSONALITIES_DIR", tmp_path / "personalities")
+
+    wm._seed_personality_page("conservative")
+
+    page = tmp_path / "personalities" / "conservative.md"
+    assert page.exists()
+    meta, body = wm._parse_frontmatter(page)
+    assert meta["personality"] == "conservative"
+    assert meta["wins"] == 0
+    assert "CONSERVATIVE" in body
+    assert "## Philosophy" in body
+    assert "## Performance" in body
