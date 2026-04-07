@@ -217,3 +217,51 @@ async def test_estimate_without_job_slug_no_wiki_call(monkeypatch):
 
             assert resp.status_code == 200
             mock_enrich.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
+    """Tournament with job_slug should fire wiki enrich_tournament in background."""
+    monkeypatch.setenv("API_KEY", "test-key")
+
+    from unittest.mock import MagicMock
+    import dataclasses
+
+    # Minimal mock of TournamentResult and TournamentEntry
+    @dataclasses.dataclass
+    class FakeEntry:
+        agent_name: str = "balanced"
+        total_bid: float = 150000.0
+        margin_pct: float = 12.0
+        confidence: str = "high"
+        temperature: float = 0.7
+        sample_index: int = 0
+        estimate: dict = dataclasses.field(default_factory=dict)
+        error: str = ""
+
+    @dataclasses.dataclass
+    class FakeResult:
+        tournament_id: int = 1
+        entries: list = dataclasses.field(default_factory=list)
+        consensus_entries: list = dataclasses.field(default_factory=list)
+
+    entry = FakeEntry()
+    fake_result = FakeResult(entries=[entry], consensus_entries=[entry])
+
+    with patch("backend.api.routes.run_tournament", new=AsyncMock(return_value=fake_result)):
+        with patch("backend.agents.wiki_manager.enrich_tournament", new=AsyncMock()) as mock_enrich:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                resp = await c.post(
+                    "/api/tournament/run",
+                    json={
+                        "description": "Build a 10,000 sqft warehouse in Houston TX",
+                        "zip_code": "77001",
+                        "job_slug": "test-job",
+                    },
+                    headers={"X-API-Key": "test-key"},
+                )
+
+            assert resp.status_code == 200
+            import asyncio
+            await asyncio.sleep(0.1)
+            mock_enrich.assert_called_once()
