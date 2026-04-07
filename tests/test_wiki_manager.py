@@ -559,3 +559,84 @@ def test_seed_personality_page(tmp_path, monkeypatch):
     assert "CONSERVATIVE" in body
     assert "## Philosophy" in body
     assert "## Performance" in body
+
+
+@pytest.mark.anyio
+async def test_full_job_lifecycle(tmp_path, monkeypatch):
+    """End-to-end: prospect → estimated → tournament-complete → bid-submitted → won → closed."""
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(wm, "PERSONALITIES_DIR", tmp_path / "personalities")
+    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
+
+    # Mock all LLM calls
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="## Section\nLLM-generated content.")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(wm, "_anthropic", mock_client)
+
+    # 1. Create job (prospect)
+    result = await wm.create_job(
+        client_id="lifecycle-test",
+        project_name="Full Lifecycle Job",
+        description="A test project to verify the complete job pipeline works end-to-end",
+        zip_code="78701",
+        trade_type="general",
+    )
+    slug = result["job_slug"]
+    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    assert meta["status"] == "prospect"
+
+    # 2. Enrich with estimate
+    await wm.enrich_estimate(slug, {
+        "total_bid": 150000.0,
+        "estimate_low": 135000.0,
+        "estimate_high": 165000.0,
+        "confidence": "high",
+        "line_items": [],
+    })
+    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    assert meta["status"] == "estimated"
+    assert meta["estimate_total"] == 150000.0
+
+    # 3. Enrich with tournament
+    await wm.enrich_tournament(slug, {
+        "tournament_id": 99,
+        "consensus_entries": [
+            {"agent_name": "conservative", "total_bid": 170000, "confidence": "high"},
+            {"agent_name": "balanced", "total_bid": 150000, "confidence": "high"},
+            {"agent_name": "aggressive", "total_bid": 135000, "confidence": "medium"},
+        ],
+    })
+    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    assert meta["status"] == "tournament-complete"
+    assert meta["tournament_id"] == 99
+    assert meta["band_low"] == 135000
+    assert meta["band_high"] == 170000
+
+    # 4. Record bid decision
+    await wm.record_bid_decision(slug, our_bid=150000.0, notes="Going with Balanced")
+    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    assert meta["status"] == "bid-submitted"
+    assert meta["our_bid"] == 150000.0
+
+    # 5. Cascade: won
+    await wm.cascade_outcome(slug, status="won", notes="Client accepted")
+    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    assert meta["status"] == "won"
+
+    # Client page should show win
+    client_meta, _ = wm._read_page(tmp_path / "clients" / "lifecycle-test.md")
+    assert client_meta["wins"] == 1
+
+    # 6. Cascade: closed with actual cost
+    await wm.cascade_outcome(slug, status="closed", actual_cost=142000.0)
+    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    assert meta["status"] == "closed"
+    assert meta["actual_cost"] == 142000.0
+
+    # Verify LLM was called multiple times (at least once per stage)
+    assert mock_client.messages.create.call_count >= 6
