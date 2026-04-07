@@ -91,7 +91,7 @@ async def job_update(request: Request, req: JobUpdateRequest):
                 notes=req.notes or "",
             )
 
-        meta, _ = wiki_manager._read_page(page_path)
+        meta, _ = wiki_manager.read_page(page_path)
         return meta
     except Exception as exc:
         logger.exception("job_update failed")
@@ -105,7 +105,7 @@ async def job_get(slug: str):
     if not page_path.exists():
         raise HTTPException(status_code=404, detail=f"Job '{slug}' not found")
 
-    meta, _ = wiki_manager._read_page(page_path)
+    meta, _ = wiki_manager.read_page(page_path)
     meta["job_slug"] = slug
     return meta
 
@@ -118,7 +118,7 @@ async def jobs_list(status: Optional[str] = None):
 
     results = []
     for path in wiki_manager.JOBS_DIR.glob("*.md"):
-        meta, _ = wiki_manager._read_page(path)
+        meta, _ = wiki_manager.read_page(path)
         meta["job_slug"] = path.stem
 
         if status == "active" and meta.get("status") in ("closed", "lost"):

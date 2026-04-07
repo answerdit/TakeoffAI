@@ -65,7 +65,7 @@ def _write_page(path: Path, meta: dict, body: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _read_page(path: Path) -> tuple[dict, str]:
+def read_page(path: Path) -> tuple[dict, str]:
     """Alias for _parse_frontmatter — reads a wiki page into (meta, body)."""
     return _parse_frontmatter(path)
 
@@ -251,7 +251,7 @@ async def enrich_estimate(job_slug: str, estimate_data: dict) -> None:
             logger.debug("enrich_estimate: job page %s not found, skipping", job_slug)
             return
 
-        meta, body = _read_page(page_path)
+        meta, body = read_page(page_path)
 
         meta["status"] = "estimated"
         meta["estimate_total"] = estimate_data.get("total_bid")
@@ -289,7 +289,7 @@ async def enrich_tournament(job_slug: str, tournament_data: dict) -> None:
             logger.debug("enrich_tournament: job page %s not found, skipping", job_slug)
             return
 
-        meta, body = _read_page(page_path)
+        meta, body = read_page(page_path)
 
         entries = tournament_data.get("consensus_entries", [])
         bids = [e["total_bid"] for e in entries if e.get("total_bid")]
@@ -331,32 +331,35 @@ async def record_bid_decision(
     notes: str = "",
 ) -> None:
     """Append Bid Decision section and update status to bid-submitted."""
-    page_path = JOBS_DIR / f"{job_slug}.md"
-    if not page_path.exists():
-        logger.debug("record_bid_decision: job page %s not found, skipping", job_slug)
-        return
+    try:
+        page_path = JOBS_DIR / f"{job_slug}.md"
+        if not page_path.exists():
+            logger.debug("record_bid_decision: job page %s not found, skipping", job_slug)
+            return
 
-    meta, body = _read_page(page_path)
-    meta["status"] = "bid-submitted"
-    meta["our_bid"] = our_bid
+        meta, body = read_page(page_path)
+        meta["status"] = "bid-submitted"
+        meta["our_bid"] = our_bid
 
-    section = await _synthesize(
-        context=(
-            f"Existing page:\n{body}\n\n"
-            f"Bid decision: ${our_bid:,.2f}\n"
-            f"Notes: {notes}"
-        ),
-        instruction=(
-            "Write a ## Bid Decision section. Summarize:\n"
-            "- Which bid amount was chosen and why\n"
-            "- How it relates to the tournament band\n"
-            "- Risk assessment for this number\n"
-            "Do not repeat earlier sections."
-        ),
-    )
+        section = await _synthesize(
+            context=(
+                f"Existing page:\n{body}\n\n"
+                f"Bid decision: ${our_bid:,.2f}\n"
+                f"Notes: {notes}"
+            ),
+            instruction=(
+                "Write a ## Bid Decision section. Summarize:\n"
+                "- Which bid amount was chosen and why\n"
+                "- How it relates to the tournament band\n"
+                "- Risk assessment for this number\n"
+                "Do not repeat earlier sections."
+            ),
+        )
 
-    body = _append_section(body, section)
-    _write_page(page_path, meta, body)
+        body = _append_section(body, section)
+        _write_page(page_path, meta, body)
+    except Exception:
+        logger.exception("record_bid_decision: failed for job %s", job_slug)
 
 
 async def cascade_outcome(
@@ -379,7 +382,7 @@ async def cascade_outcome(
         logger.warning("cascade_outcome: job page %s not found", job_slug)
         return
 
-    meta, body = _read_page(page_path)
+    meta, body = read_page(page_path)
 
     # ── Step 1: Update job page ──────────────────────────────────────────
     meta["status"] = status
@@ -437,7 +440,7 @@ async def _update_client_page_on_outcome(
     if not client_path.exists():
         _ensure_client_page(client_id)
 
-    meta, body = _read_page(client_path)
+    meta, body = read_page(client_path)
 
     if status == "won":
         meta["wins"] = meta.get("wins", 0) + 1
@@ -476,7 +479,7 @@ async def _update_personality_page(
     if not page_path.exists():
         _seed_personality_page(personality)
 
-    meta, body = _read_page(page_path)
+    meta, body = read_page(page_path)
 
     if status == "won":
         meta["wins"] = meta.get("wins", 0) + 1
@@ -521,7 +524,7 @@ async def update_material_page(
         today = date.today().isoformat()
 
         if page_path.exists():
-            meta, body = _read_page(page_path)
+            meta, body = read_page(page_path)
             meta["last_verified"] = today
             meta["verified_mid"] = verified_mid
             meta["deviation_pct"] = deviation_pct

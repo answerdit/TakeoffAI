@@ -65,11 +65,11 @@ def test_write_page_overwrites(tmp_path):
 
 
 def test_read_page_returns_tuple(tmp_path):
-    from backend.agents.wiki_manager import _write_page, _read_page
+    from backend.agents.wiki_manager import _write_page, read_page
 
     page = tmp_path / "test.md"
     _write_page(page, {"status": "prospect", "client": "acme"}, "# Title\n\nBody.")
-    meta, body = _read_page(page)
+    meta, body = read_page(page)
     assert meta["status"] == "prospect"
     assert "Body." in body
 
@@ -235,7 +235,7 @@ async def test_enrich_estimate_appends_section(tmp_path, monkeypatch):
 
     await wm.enrich_estimate("2026-04-06-acme-garage", estimate_data)
 
-    meta, body = wm._read_page(job_path)
+    meta, body = wm.read_page(job_path)
     assert meta["status"] == "estimated"
     assert meta["estimate_total"] == 159880.0
     assert meta["estimate_low"] == 143000.0
@@ -279,7 +279,7 @@ async def test_enrich_tournament_appends_section(tmp_path, monkeypatch):
 
     await wm.enrich_tournament("2026-04-06-acme-garage", tournament_data)
 
-    meta, body = wm._read_page(job_path)
+    meta, body = wm.read_page(job_path)
     assert meta["status"] == "tournament-complete"
     assert meta["tournament_id"] == 42
     assert meta["band_low"] == 143200
@@ -309,7 +309,7 @@ async def test_record_bid_decision(tmp_path, monkeypatch):
 
     await wm.record_bid_decision("2026-04-06-acme-garage", our_bid=159880.0, notes="Balanced consensus")
 
-    meta, body = wm._read_page(job_path)
+    meta, body = wm.read_page(job_path)
     assert meta["status"] == "bid-submitted"
     assert meta["our_bid"] == 159880.0
     assert "Bid Decision" in body
@@ -367,14 +367,14 @@ async def test_cascade_outcome_updates_multiple_pages(tmp_path, monkeypatch):
     )
 
     # Job page updated
-    meta, body = wm._read_page(job_path)
+    meta, body = wm.read_page(job_path)
     assert meta["status"] == "won"
     assert "Outcome" in body
     from datetime import date as _date
     assert meta["outcome_date"] == _date.today().isoformat()
 
     # Client page updated
-    c_meta, _ = wm._read_page(client_path)
+    c_meta, _ = wm.read_page(client_path)
     assert c_meta["wins"] == 1
 
     # Personality page created
@@ -413,7 +413,7 @@ async def test_cascade_outcome_closed_with_actual_cost(tmp_path, monkeypatch):
         actual_cost=148000.0,
     )
 
-    meta, _ = wm._read_page(job_path)
+    meta, _ = wm.read_page(job_path)
     assert meta["status"] == "closed"
     assert meta["actual_cost"] == 148000.0
 
@@ -441,7 +441,7 @@ async def test_update_material_page_creates_new(tmp_path, monkeypatch):
 
     pages = list((tmp_path / "materials").glob("*.md"))
     assert len(pages) == 1
-    meta, body = wm._read_page(pages[0])
+    meta, body = wm.read_page(pages[0])
     assert meta["material"] == "concrete"
     assert meta["deviation_pct"] == 12.07
     assert "Pricing" in body
@@ -475,7 +475,7 @@ async def test_update_material_page_updates_existing(tmp_path, monkeypatch):
         category="structural",
     )
 
-    meta, _ = wm._read_page(page_path)
+    meta, _ = wm.read_page(page_path)
     assert meta["deviation_pct"] == 12.07
     assert meta["verified_mid"] == 5.80
     from datetime import date as _date
@@ -587,7 +587,7 @@ async def test_full_job_lifecycle(tmp_path, monkeypatch):
         trade_type="general",
     )
     slug = result["job_slug"]
-    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    meta, _ = wm.read_page(tmp_path / "jobs" / f"{slug}.md")
     assert meta["status"] == "prospect"
 
     # 2. Enrich with estimate
@@ -598,7 +598,7 @@ async def test_full_job_lifecycle(tmp_path, monkeypatch):
         "confidence": "high",
         "line_items": [],
     })
-    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    meta, _ = wm.read_page(tmp_path / "jobs" / f"{slug}.md")
     assert meta["status"] == "estimated"
     assert meta["estimate_total"] == 150000.0
 
@@ -611,7 +611,7 @@ async def test_full_job_lifecycle(tmp_path, monkeypatch):
             {"agent_name": "aggressive", "total_bid": 135000, "confidence": "medium"},
         ],
     })
-    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    meta, _ = wm.read_page(tmp_path / "jobs" / f"{slug}.md")
     assert meta["status"] == "tournament-complete"
     assert meta["tournament_id"] == 99
     assert meta["band_low"] == 135000
@@ -619,22 +619,22 @@ async def test_full_job_lifecycle(tmp_path, monkeypatch):
 
     # 4. Record bid decision
     await wm.record_bid_decision(slug, our_bid=150000.0, notes="Going with Balanced")
-    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    meta, _ = wm.read_page(tmp_path / "jobs" / f"{slug}.md")
     assert meta["status"] == "bid-submitted"
     assert meta["our_bid"] == 150000.0
 
     # 5. Cascade: won
     await wm.cascade_outcome(slug, status="won", notes="Client accepted")
-    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    meta, _ = wm.read_page(tmp_path / "jobs" / f"{slug}.md")
     assert meta["status"] == "won"
 
     # Client page should show win
-    client_meta, _ = wm._read_page(tmp_path / "clients" / "lifecycle-test.md")
+    client_meta, _ = wm.read_page(tmp_path / "clients" / "lifecycle-test.md")
     assert client_meta["wins"] == 1
 
     # 6. Cascade: closed with actual cost
     await wm.cascade_outcome(slug, status="closed", actual_cost=142000.0)
-    meta, _ = wm._read_page(tmp_path / "jobs" / f"{slug}.md")
+    meta, _ = wm.read_page(tmp_path / "jobs" / f"{slug}.md")
     assert meta["status"] == "closed"
     assert meta["actual_cost"] == 142000.0
 
