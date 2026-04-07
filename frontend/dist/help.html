@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TakeoffAI — User Guide</title>
+  <style>
+    :root {
+      --bg:           #0a0a0a;
+      --bg-card:      #111111;
+      --bg-input:     #1a1a1a;
+      --border:       #2a2a2a;
+      --amber:        #f59e0b;
+      --amber-dim:    #b45309;
+      --amber-glow:   #f59e0b22;
+      --text:         #e5e5e5;
+      --text-muted:   #6b7280;
+      --text-dim:     #9ca3af;
+      --green:        #22c55e;
+      --red:          #ef4444;
+      --radius:       8px;
+      --radius-lg:    12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.7;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 100;
+    }
+
+    .logo { display: flex; align-items: baseline; gap: 10px; }
+    .logo-name { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em; color: var(--amber); }
+    .logo-name span { color: var(--text); }
+    .logo-by { font-size: 0.78rem; color: var(--text-muted); letter-spacing: 0.02em; }
+
+    .back-link {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      letter-spacing: 0.01em;
+      transition: color 0.15s;
+    }
+    .back-link:hover { color: var(--amber); }
+
+    /* ── Layout ─────────────────────────────────────────────────── */
+    .wrapper {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 6rem;
+      gap: 3rem;
+    }
+
+    /* ── Sidebar TOC ─────────────────────────────────────────────── */
+    nav.toc {
+      width: 220px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 80px;
+      align-self: flex-start;
+      max-height: calc(100vh - 100px);
+      overflow-y: auto;
+    }
+
+    nav.toc .toc-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+
+    nav.toc a {
+      display: block;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      text-decoration: none;
+      padding: 0.3rem 0;
+      border-left: 2px solid transparent;
+      padding-left: 0.75rem;
+      transition: color 0.15s, border-color 0.15s;
+      line-height: 1.4;
+    }
+
+    nav.toc a:hover, nav.toc a.active {
+      color: var(--amber);
+      border-left-color: var(--amber);
+    }
+
+    nav.toc a.sub {
+      padding-left: 1.5rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Content ─────────────────────────────────────────────────── */
+    article { flex: 1; min-width: 0; }
+
+    .version-tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 2px 10px;
+      margin-bottom: 2rem;
+      letter-spacing: 0.05em;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--amber);
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      font-size: 1rem;
+      color: var(--text-dim);
+      margin-bottom: 2.5rem;
+    }
+
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--amber);
+      margin: 3rem 0 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      letter-spacing: -0.01em;
+    }
+
+    h2:first-of-type { border-top: none; margin-top: 0; }
+
+    h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 2rem 0 0.6rem;
+    }
+
+    h4 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--amber-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 1.5rem 0 0.5rem;
+    }
+
+    p { margin-bottom: 0.9rem; color: var(--text-dim); }
+
+    strong { color: var(--text); font-weight: 600; }
+
+    em { color: var(--text-dim); font-style: italic; }
+
+    /* ── Tables ─────────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; margin: 1rem 0 1.5rem; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.5rem 0.85rem;
+      background: var(--bg-card);
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 0.6rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+      vertical-align: top;
+    }
+
+    td:first-child { color: var(--text); font-weight: 500; }
+
+    tr:last-child td { border-bottom: none; }
+
+    /* ── Lists ───────────────────────────────────────────────────── */
+    ul, ol {
+      padding-left: 1.4rem;
+      margin-bottom: 1rem;
+      color: var(--text-dim);
+    }
+
+    li { margin-bottom: 0.35rem; line-height: 1.6; }
+
+    /* ── Callout boxes ───────────────────────────────────────────── */
+    .callout {
+      background: var(--amber-glow);
+      border: 1px solid var(--amber-dim);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      margin: 1rem 0 1.5rem;
+      font-size: 0.88rem;
+    }
+
+    .callout-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--amber);
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+
+    .callout p { margin: 0; color: var(--text-dim); }
+
+    .callout.tip { background: #052e1622; border-color: #166534; }
+    .callout.tip .callout-title { color: var(--green); }
+
+    .callout.warn { background: #2a1a0022; border-color: var(--amber-dim); }
+
+    /* ── Code / example ──────────────────────────────────────────── */
+    .example {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--amber);
+      border-radius: var(--radius);
+      padding: 0.9rem 1.1rem;
+      font-size: 0.84rem;
+      color: var(--text-dim);
+      margin: 0.75rem 0 1.25rem;
+      font-style: italic;
+      line-height: 1.6;
+    }
+
+    code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      background: var(--bg-input);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--amber);
+    }
+
+    /* ── Checklist ───────────────────────────────────────────────── */
+    .checklist {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .checklist li {
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-start;
+      padding: 0.35rem 0;
+      color: var(--text-dim);
+    }
+
+    .checklist li::before {
+      content: '☐';
+      color: var(--amber-dim);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ── Personality cards ───────────────────────────────────────── */
+    .personality-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 1rem 0 1.5rem;
+    }
+
+    .p-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem;
+    }
+
+    .p-card-name {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--amber);
+      margin-bottom: 0.4rem;
+    }
+
+    .p-card p { font-size: 0.84rem; margin: 0; color: var(--text-dim); }
+
+    /* ── Status badge ────────────────────────────────────────────── */
+    .status-row {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin: 0.75rem 0 1.25rem;
+    }
+
+    .badge {
+      font-size: 0.72rem;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-prospect  { background: #1e293b; color: #94a3b8; }
+    .badge-estimated { background: #1e3a5f; color: #60a5fa; }
+    .badge-tournament{ background: #2d1b69; color: #a78bfa; }
+    .badge-submitted { background: #1c3a2f; color: #34d399; }
+    .badge-won       { background: #052e16; color: var(--green); }
+    .badge-lost      { background: #2d1a1a; color: var(--red); }
+    .badge-closed    { background: #1a1a1a; color: var(--text-muted); }
+
+    /* ── Divider ─────────────────────────────────────────────────── */
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2.5rem 0;
+    }
+
+    /* ── Footer ──────────────────────────────────────────────────── */
+    footer {
+      margin-top: 4rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 768px) {
+      nav.toc { display: none; }
+      .wrapper { padding: 1.5rem 1rem 4rem; }
+      .personality-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-name">Takeoff<span>AI</span></span>
+    <span class="logo-by">by answerd.it</span>
+  </div>
+  <a class="back-link" href="index.html">← Back to App</a>
+</header>
+
+<div class="wrapper">
+
+  <!-- ── Sidebar TOC ─────────────────────────────────────────── -->
+  <nav class="toc">
+    <div class="toc-label">Contents</div>
+    <a href="#overview">What Is TakeoffAI?</a>
+    <a href="#getting-started">Getting Started</a>
+    <a href="#estimate">Pre-Bid Estimate</a>
+    <a class="sub" href="#writing-descriptions">Writing Descriptions</a>
+    <a class="sub" href="#confidence-band">Confidence Band</a>
+    <a href="#bid-strategy">Bid Strategy</a>
+    <a href="#tournament">Tournament Mode</a>
+    <a class="sub" href="#personalities">The Five Personalities</a>
+    <a class="sub" href="#reading-spread">Reading the Spread</a>
+    <a href="#bid-history">Import Bid History</a>
+    <a href="#elo">ELO System</a>
+    <a href="#job-tracking">Job Tracking</a>
+    <a href="#how-ai-works">How the AI Works</a>
+    <a href="#workflow">Recommended Workflow</a>
+    <a href="#troubleshooting">Troubleshooting</a>
+  </nav>
+
+  <!-- ── Main Content ────────────────────────────────────────── -->
+  <article>
+
+    <div class="version-tag">Version 1.0 &nbsp;·&nbsp; April 2026</div>
+    <h1>TakeoffAI User Guide</h1>
+    <p class="subtitle">Know your number. Win the bid.</p>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="overview">What Is TakeoffAI?</h2>
+
+    <p>TakeoffAI is an AI-powered bid preparation tool built specifically for construction contractors. It helps you generate accurate line-item cost estimates, analyze RFPs, model multiple bidding strategies, and track jobs from first look to final outcome — all in one place.</p>
+
+    <p>A bid that's too high loses the job. A bid that's too low wins it and kills your margin. TakeoffAI gives you a sharper number, faster, and shows you the full risk picture before you commit.</p>
+
+    <p>Every tournament you run, every win and loss you log, makes the system smarter for the next job.</p>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="getting-started">Getting Started</h2>
+
+    <h3>The Header</h3>
+    <p>The header at the top of every screen contains the <strong>API Key</strong> field — your TakeoffAI access key, provided with your installation. Enter it once per session. The app stores it in your browser for the session.</p>
+
+    <p>The four main tabs give you access to every feature: <strong>Pre-Bid Estimate</strong>, <strong>Bid Strategy</strong>, <strong>Import Bid History</strong>, and <strong>Tournament</strong>.</p>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="estimate">Feature 1: Pre-Bid Estimate</h2>
+
+    <p>Turn a plain-English project description into a full line-item cost estimate with a confidence band — before you ever open the RFP.</p>
+
+    <h3>Step-by-Step</h3>
+    <ol>
+      <li><strong>Describe the project.</strong> Write a plain-English description. Be specific — square footage, room counts, materials, special conditions. More detail = tighter estimate.</li>
+      <li><strong>Enter the zip code.</strong> TakeoffAI applies a regional cost index to adjust labor and material costs for your market. Use the project zip, not your office zip.</li>
+      <li><strong>Select your trade type.</strong> Focuses the AI's cost anchors on the right material categories.</li>
+      <li><strong>Set Overhead % and Margin %</strong> using the sliders (defaults: 20% overhead, 12% margin). Applied on top of direct costs to arrive at your total bid number.</li>
+      <li><strong>Click Calculate Estimate.</strong></li>
+    </ol>
+
+    <h3>Reading the Results</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Column</th><th>What It Means</th></tr></thead>
+        <tbody>
+          <tr><td>Description</td><td>Line item name (e.g., "Framing — Exterior Walls")</td></tr>
+          <tr><td>Qty</td><td>Quantity in the applicable unit</td></tr>
+          <tr><td>Unit</td><td>Unit of measure (sqft, LF, EA, etc.)</td></tr>
+          <tr><td>Mat $/unit</td><td>Material cost per unit</td></tr>
+          <tr><td>Labor $/unit</td><td>Labor cost per unit including burden</td></tr>
+          <tr><td>Total</td><td>Extended cost for that line item</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Use <strong>Export CSV</strong> to download the full line-item table for your estimating team or project management software.</p>
+
+    <!-- ── Writing Descriptions ─────────────────────────────── -->
+    <h2 id="writing-descriptions">Writing Project Descriptions That Get Accurate Estimates</h2>
+
+    <p>The description you write is the single most important input in TakeoffAI. The AI cannot measure your plans, visit your site, or read the RFP on your behalf. What you type is the entire universe it works from. A vague description gets a vague estimate. A specific description gets a number you can actually bid from.</p>
+
+    <h3>The Core Rule: Quantities Over Adjectives</h3>
+    <p>The AI converts your description into measurable quantities — square feet, linear feet, units, tons. Adjectives don't convert. Quantities do.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Weak</th><th>Strong</th></tr></thead>
+        <tbody>
+          <tr><td>Large commercial office</td><td>18,000 sqft, 3-story commercial office building</td></tr>
+          <tr><td>Several restrooms</td><td>8 restrooms, 2 per floor</td></tr>
+          <tr><td>New electrical work</td><td>200-amp service entrance, 40-circuit panel, rough-in for 18 offices</td></tr>
+          <tr><td>Parking lot paving</td><td>280-space surface parking lot, approximately 90,000 sqft, 4-inch asphalt over 6-inch base</td></tr>
+          <tr><td>Metal building</td><td>60×120 pre-engineered metal building, 14-foot eave height, 3:12 roof pitch, 1 grade-level door, 2 overhead doors</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>What to Always Include</h3>
+    <ol>
+      <li><strong>Gross size</strong> — total square footage, linear footage, or unit count. This is the single most important number.</li>
+      <li><strong>Building type and use</strong> — office, warehouse, retail, medical, school, multifamily. Use matters because finish levels and MEP density vary enormously by occupancy.</li>
+      <li><strong>Primary trade scope</strong> — what work are you pricing? "Full GC scope" means something different than "framing and drywall only."</li>
+      <li><strong>Location characteristics</strong> — rural site with no utilities, high-rise in dense urban core, renovation inside an occupied building, poor access.</li>
+      <li><strong>Key materials</strong> — precast vs. cast-in-place, EPDM vs. TPO, VRF vs. split systems. The AI defaults to mid-market if you don't specify.</li>
+    </ol>
+
+    <h3>What to Include by Trade</h3>
+
+    <h4>General Contractor / Multi-Trade</h4>
+    <p>Cover: gross sqft and footprint, number of stories, structural system, exterior envelope, roof type, interior finish level, room counts by category, MEP scope, and site work in or out.</p>
+    <div class="example">"40,000 sqft tilt-wall industrial building, single story, 28-foot clear height. Concrete tilt panels, TPO roof, 4 dock-high doors, 1 grade-level door. 2,000 sqft of office finish at the front — 6 private offices, open bullpen, 2 restrooms, break room. Full MEP rough-in throughout. Concrete apron on 3 sides, 120-space parking lot. No civil or site utilities included."</div>
+
+    <h4>Concrete</h4>
+    <p>Include: volume in cubic yards or dimensions to calculate it, slab thickness and reinforcement, finish type, subbase preparation, formwork complexity, pump required or direct chute.</p>
+    <div class="example">"8,000 sqft concrete slab-on-grade, 5-inch thickness, #4 rebar at 18-inch on center each way. Broom finish. 4-inch compacted caliche base. Site is accessible for direct truck chute, no pump needed. No demo — virgin ground."</div>
+
+    <h4>Framing</h4>
+    <p>Include: linear feet of exterior wall or total wall sqft, wall height and stud spacing, stud size, roof framing type, sheathing included or not, number of special framing conditions.</p>
+    <div class="example">"2-story wood frame residential, 3,200 sqft footprint per floor. 2×6 exterior walls at 16" OC, 9-foot ceilings both floors. Engineered floor trusses second floor. Pre-manufactured roof trusses, 6:12 pitch, 26-foot span. OSB sheathing included. 3 large window openings over 6 feet, double LVL headers. No interior framing — exterior shell only."</div>
+
+    <h4>Roofing</h4>
+    <p>Include: roof sqft (not building footprint), roof type, membrane thickness or gauge, insulation type and R-value, deck type, tear-off included or not, number of penetrations, parapet or edge condition.</p>
+    <div class="example">"22,000 sqft flat commercial roof. TPO, 60-mil, fully adhered. 3-inch polyiso insulation under membrane. Existing EPDM tear-off and disposal included. Steel deck, good condition. 8 roof drains, 12 HVAC curbs — flashing included. Standing seam coping cap on parapet, 340 LF."</div>
+
+    <h4>Electrical</h4>
+    <p>Include: service size and voltage, number of panels, rough-in scope, lighting fixture count or sqft with density, special systems, whether design-build or from engineer's drawings.</p>
+    <div class="example">"New 400A, 120/208V, 3-phase service for 8,000 sqft retail strip center. Main distribution panel with 6 sub-panels. EMT conduit throughout. 180 duplex receptacles, 40 circuits. Fluorescent lighting — 120 2×4 troffers, LED. Exit and emergency lighting per code. No fire alarm. Working from engineer's drawings."</div>
+
+    <h4>Plumbing</h4>
+    <p>Include: fixture counts by type, hot water system, gas piping load, grease trap if food service, rough-in only or full finish.</p>
+    <div class="example">"Plumbing for a 4,500 sqft restaurant. Rough-in and finish. 4 water closets, 4 lavatories, 2 urinals, 3 hand sinks at bar, 2 three-compartment sinks in kitchen, 4 floor drains, 1 mop sink. Grease interceptor — 1,000 gallon, below slab. Gas piping for 6 kitchen appliances, total 850,000 BTU. 80-gallon commercial water heater with recirculating pump."</div>
+
+    <h4>HVAC</h4>
+    <p>Include: building sqft and type, system type, number of zones or units, ductwork type, controls, ventilation requirements.</p>
+    <div class="example">"HVAC for 12,000 sqft medical office, 2-story. VRF system — 4 outdoor units, 22 indoor cassette units. Sheet metal main trunks, flex branch runs. CO2-based demand control ventilation. BACnet integration to existing building automation system. No kitchen or specialty exhaust."</div>
+
+    <h4>Renovation vs. New Construction</h4>
+    <p>Always state clearly which one you're pricing. For renovations, add: what's being demolished, whether the building is occupied during construction, any known hazardous materials, and existing conditions being retained.</p>
+    <div class="example">"Interior renovation of an occupied 3-story office building. Work limited to the 2nd floor, 8,000 sqft. Building remains occupied — work hours restricted to 6PM–6AM weekdays and all day weekends. No asbestos per recent survey. Existing structural steel and slab to remain."</div>
+
+    <h3>What Not to Include</h3>
+    <ul>
+      <li><strong>Company or owner names</strong> — the AI doesn't use them</li>
+      <li><strong>Bid deadlines or submission dates</strong> — irrelevant to cost estimation</li>
+      <li><strong>Contract terms</strong> — payment schedules, retainage, liquidated damages</li>
+      <li><strong>Vague quality descriptors</strong> — "high-end," "luxury," "budget" without backing specifics. Instead: "Level 5 drywall finish" or "LVT with 3mm wear layer"</li>
+      <li><strong>What you're not doing</strong> — unless it's commonly assumed. "No civil" is useful. "No furniture" is not.</li>
+    </ul>
+
+    <h3>Quick Pre-Submission Checklist</h3>
+    <ul class="checklist">
+      <li>What is the total size in measurable units (sqft, LF, CY)?</li>
+      <li>What type of building or structure is it?</li>
+      <li>What trades are in scope?</li>
+      <li>What are the key specified materials?</li>
+      <li>Are there site or access conditions that affect productivity?</li>
+      <li>New construction or renovation? If renovation, is the building occupied?</li>
+      <li>What's explicitly excluded?</li>
+    </ul>
+
+    <!-- ── Confidence Band ───────────────────────────────────── -->
+    <h2 id="confidence-band">Understanding the Confidence Band</h2>
+
+    <p>Every estimate returns three numbers: Low, Total Bid, and High. The band is not a margin of error — it's a risk map.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Spread</th><th>Badge</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>Under 10%</td><td><strong>High</strong></td><td>Tight scope, reliable number — trust it</td></tr>
+          <tr><td>10–20%</td><td><strong>Medium</strong></td><td>Reasonable uncertainty — review key line items</td></tr>
+          <tr><td>Over 20%</td><td><strong>Low</strong></td><td>Too much uncertainty — tighten the description</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Reading the Three Numbers</h3>
+    <ul>
+      <li><strong>Low</strong> — best-case scenario: low-end unit costs, favorable productivity, no scope surprises. This is what the job costs if everything goes right. It almost never does. <em>This is not the number to bid.</em></li>
+      <li><strong>Total Bid</strong> — mid-range unit costs, realistic productivity, overhead and margin applied. Your starting point.</li>
+      <li><strong>High</strong> — high-end material costs, productivity challenges, scope creep potential. If the job has significant unknowns, your final number should be closer to this.</li>
+    </ul>
+
+    <h3>Using the Band in Practice</h3>
+    <p><strong>If Total Bid and your gut are close</strong> → proceed with confidence.</p>
+    <p><strong>If Total Bid is well below your gut</strong> → the description probably missed something. Go back and add it before assuming the AI is right.</p>
+    <p><strong>If Total Bid is well above your gut</strong> → either your gut is off, or the AI priced a specific material high. Look at the line items to find it.</p>
+    <p><strong>In a negotiation</strong> → Low tells you the floor — the minimum the job can realistically be done for. High tells you where the owner's contingency should sit.</p>
+    <p><strong>When the band exceeds 25%</strong> → don't present this number to an owner. Go back to the description, tighten quantities, name the materials, and re-run.</p>
+
+    <div class="callout tip">
+      <div class="callout-title">Best Practice</div>
+      <p>Run the estimate before you read the RFP. It forces an independent view of project cost — then compare against what the owner actually specified. Gaps between your estimate and the RFP scope are the first thing to resolve.</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="bid-strategy">Feature 2: Bid Strategy</h2>
+
+    <p>Analyze the RFP, compare it against your estimate, generate three bid scenarios with win probabilities, and produce a ready-to-submit proposal narrative.</p>
+
+    <h3>Step-by-Step</h3>
+    <ol>
+      <li><strong>Run a Pre-Bid Estimate first.</strong> The result auto-carries over to the Bid Strategy tab. You'll see an amber notice if no estimate is loaded.</li>
+      <li><strong>Paste the RFP.</strong> Copy the full scope-of-work section. Include evaluation criteria, submission requirements, owner preferences.</li>
+      <li><strong>Select the project type</strong> — Commercial, Residential, Industrial, Government, or Renovation/T.I. Affects how the AI models the competitive landscape.</li>
+      <li><strong>Add known competitors</strong> (optional). The AI factors this into the win probability model.</li>
+      <li><strong>Click Analyze &amp; Build Strategy.</strong></li>
+    </ol>
+
+    <h3>Reading the Results</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Scenario</th><th>Strategy</th><th>When to Use</th></tr></thead>
+        <tbody>
+          <tr><td>Conservative</td><td>Highest win probability, lowest margin</td><td>Need the revenue, relationship play, hyper-competitive market</td></tr>
+          <tr><td>Balanced</td><td>Optimal expected-value bid (Friedman model)</td><td>Your default starting point — maximize expected return across many bids</td></tr>
+          <tr><td>Aggressive</td><td>Highest margin, lowest win probability</td><td>Backlog is full, sole-source situation, job plays to a unique strength</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The <strong>Proposal Narrative</strong> is a ready-to-paste executive summary tailored to the owner's stated priorities. Edit and personalize it before submitting. Click <strong>Copy</strong> to copy it to your clipboard.</p>
+
+    <div class="callout warn">
+      <div class="callout-title">Read the Scope Gaps</div>
+      <p>The AI flags line items in the RFP not covered by your estimate. Resolve these before finalizing your number — they are the most common source of low-bid disasters.</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="tournament">Feature 3: Tournament Mode</h2>
+
+    <p>Run five distinct AI bidding personalities against the same job simultaneously. See where they agree, where they diverge, and use the spread to make a more informed final call.</p>
+
+    <h3>Step-by-Step</h3>
+    <ol>
+      <li><strong>Describe the project</strong> — same as the estimate tab.</li>
+      <li><strong>Enter zip code and trade type.</strong></li>
+      <li><strong>Set Client ID.</strong> Use a consistent short identifier (e.g., <code>acme_construction</code>). The system pulls that client's win history to calibrate the Historical Match personality. Use <code>default</code> if you have no history yet.</li>
+      <li><strong>Set Overhead % and Margin %.</strong></li>
+      <li><strong>Set Agents (max 5) and Samples per agent (max 5).</strong> Each personality runs multiple times and collapses to a consensus bid. More samples = more stable results, longer wait. Default is 5 agents × 3 samples.</li>
+      <li><strong>Click Run Tournament.</strong> The personalities run in parallel. Expect 30–90 seconds.</li>
+    </ol>
+
+    <h3 id="personalities">The Five Personalities</h3>
+
+    <div class="personality-grid">
+      <div class="p-card">
+        <div class="p-card-name">Conservative</div>
+        <p>Minimizes the chance of losing. Accepts lower margin for higher win rate. Anchors to low-end unit costs, applies modest markup. Use when you need the revenue or the relationship matters more than the number.</p>
+      </div>
+      <div class="p-card">
+        <div class="p-card-name">Balanced</div>
+        <p>Maximizes expected value — the probability-weighted outcome. Applies the Friedman bidding model. Not trying to win every job, trying to make the most money across a portfolio. Your neutral data point.</p>
+      </div>
+      <div class="p-card">
+        <div class="p-card-name">Aggressive</div>
+        <p>Maximizes margin. Wins less often, profits more when it does. Anchors to high-end costs, applies full markup. Use when backlog is full, you have a unique cost advantage, or it's a sole-source situation.</p>
+      </div>
+      <div class="p-card">
+        <div class="p-card-name">Historical Match</div>
+        <p>Reproduces what has actually won for you on this client, weighted by ELO performance. Requires bid history imported for the Client ID. Without history, behaves like Balanced.</p>
+      </div>
+      <div class="p-card">
+        <div class="p-card-name">Market Beater</div>
+        <p>Finds inefficiencies. Looks for where competitors will overprice out of uncertainty and bids below them, or where demand allows a premium. Highest variance — best on unusual or specialized jobs.</p>
+      </div>
+    </div>
+
+    <h3 id="reading-spread">Reading the Spread Across All Five</h3>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>What You See</th><th>What It Means</th><th>What to Do</th></tr></thead>
+        <tbody>
+          <tr><td>All five within 5% of each other</td><td>Tight market, commoditized job, limited pricing power</td><td>Choose based on current capacity need, not strategy</td></tr>
+          <tr><td>Conservative and Aggressive &gt;15% apart</td><td>Real pricing flexibility — the job has room to move</td><td>Choose based on backlog and risk appetite</td></tr>
+          <tr><td>Historical Match outlier above the pack</td><td>Your win history prices higher than current market, or the client has been loyal above market</td><td>Verify before bidding at that number — market may have gotten more competitive</td></tr>
+          <tr><td>Historical Match outlier below the pack</td><td>This client is price-sensitive, or your past cost advantage may not still exist</td><td>Investigate what drove those past wins</td></tr>
+          <tr><td>Market Beater outlier in either direction</td><td>It found something specific — an opportunity or a risk</td><td>Read its line items to understand the driver</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout tip">
+      <div class="callout-title">Best Practice</div>
+      <p>Run the tournament alongside — not instead of — your own estimate. Use it as a sanity check. If Balanced is more than 15% away from your own number, one of you found something the other missed. Dig in before committing.</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="bid-history">Feature 4: Import Bid History</h2>
+
+    <p>Feed TakeoffAI your historical bids so the tournament system can learn how you price jobs and what wins for you. The Tournament's Historical Match and ELO calibration are only as good as the data behind them.</p>
+
+    <h3>Importing via File</h3>
+    <p>Click <strong>Download template</strong> to get a CSV with the right column headers.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Column</th><th>Required?</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>project_name</td><td>Required</td><td>Name or description of the job</td></tr>
+          <tr><td>zip_code</td><td>Required</td><td>Project location</td></tr>
+          <tr><td>bid_amount</td><td>Required</td><td>Your number, in dollars</td></tr>
+          <tr><td>won</td><td>Required</td><td>true or false</td></tr>
+          <tr><td>winning_bid</td><td>Optional</td><td>What the winner bid if you lost — most valuable calibration data</td></tr>
+          <tr><td>actual_cost</td><td>Optional</td><td>What the job actually cost you if you won</td></tr>
+          <tr><td>date</td><td>Optional</td><td>When you submitted the bid</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ol>
+      <li><strong>Set your Client ID.</strong> Use a consistent short identifier. All bids under the same client ID go into the same learning pool. Don't mix clients under <code>default</code>.</li>
+      <li><strong>Drop or browse for your file</strong> — CSV and Excel (.xlsx, .xls) both work.</li>
+      <li><strong>Review the parsed bids</strong> before importing.</li>
+      <li><strong>Click Import to Client Profile.</strong></li>
+    </ol>
+
+    <p>Use <strong>Add a single bid manually</strong> to log one bid without a file — useful right after submission.</p>
+
+    <div class="callout tip">
+      <div class="callout-title">Best Practices</div>
+      <p>Import losses as well as wins. Import the winning bid amount when you lose — it's the most calibrating data point the system has. Use specific Client IDs from the start. Log actual costs on won jobs when the project closes.</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="elo">The ELO System</h2>
+
+    <p>ELO is a performance rating system (originally from chess) that measures relative results over time. TakeoffAI applies it to your bidding personalities. Every tournament result with a recorded outcome is a match. Personalities that produce winning bids score higher. Those that miss, drop.</p>
+
+    <h3>How ELO Scores Are Calculated</h3>
+    <p>When you run a tournament and record an outcome — which bid you submitted, whether you won — the system updates scores based on: which personality's number you submitted, whether you won, and by how much relative to market.</p>
+    <p><strong>ELO scores are maintained per client.</strong> The same personality can have very different scores with different clients — because what wins for one client doesn't always win for another.</p>
+
+    <h3>How ELO Influences Future Tournaments</h3>
+    <p>The ELO scores feed the Historical Match personality. High-ELO personalities for a given client get more weight. Low-ELO personalities get less. Over time, if you consistently win with Balanced on commercial concrete but only with Conservative on residential framing, the ELO system captures that distinction per client per trade type.</p>
+
+    <h3>Building a Useful ELO Profile</h3>
+    <p>ELO requires sample size. With 3–4 bids, scores are noisy. With 15–20, they're meaningful. With 30+, they're genuinely predictive.</p>
+    <p>Retrieve a client profile via <code>GET /api/client/{id}/profile</code> to see each personality's ELO and win rate. An ELO above baseline (1200) means above-average performance for this client.</p>
+
+    <div class="callout warn">
+      <div class="callout-title">When ELO Goes Stale</div>
+      <p>If your win rates drop across all personalities, the cause is usually external — new competition, material price shifts, or changed client evaluation criteria. Don't chase a dropping ELO by bidding more aggressively. Diagnose why first. If the gap between your bids and winning bids is growing, your cost anchors need updating, not your strategy.</p>
+    </div>
+
+    <h3>The HarnessEvolver</h3>
+    <p>A background process that reads tournament traces, identifies which personalities are underperforming across your bid history, rewrites their internal prompts, and commits the changes to version history. ELO scores are its primary signal. A personality with sustained low ELO is a candidate for retuning. High ELO personalities are left alone.</p>
+    <p>You can trigger a manual retuning cycle via <code>POST /api/tournament/evolve</code> after importing a significant batch of new bid history.</p>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="job-tracking">Feature 5: Job Tracking</h2>
+
+    <p>Track every project from first contact to close in a persistent, searchable knowledge base. Every tournament result, win, loss, and price flag accumulates into an institutional record that compounds over time.</p>
+
+    <h3>The Job Lifecycle</h3>
+    <div class="status-row">
+      <span class="badge badge-prospect">Prospect</span>
+      <span class="badge badge-estimated">Estimated</span>
+      <span class="badge badge-tournament">Tournament Complete</span>
+      <span class="badge badge-submitted">Bid Submitted</span>
+      <span class="badge badge-won">Won</span>
+      <span class="badge badge-lost">Lost</span>
+      <span class="badge badge-closed">Closed</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Status</th><th>Trigger</th><th>What Happens</th></tr></thead>
+        <tbody>
+          <tr><td>Prospect</td><td><code>POST /api/job/create</code></td><td>Job page created with AI-written Scope section</td></tr>
+          <tr><td>Estimated</td><td>Estimate run with <code>job_slug</code></td><td>Estimate narrative appended to job page</td></tr>
+          <tr><td>Tournament Complete</td><td>Tournament run with <code>job_slug</code></td><td>Tournament analysis appended — personality spread, band interpretation</td></tr>
+          <tr><td>Bid Submitted</td><td><code>POST /api/job/update</code></td><td>Bid decision section appended with your number and rationale</td></tr>
+          <tr><td>Won / Lost</td><td><code>POST /api/job/update</code></td><td>Outcome recorded. Client page, personality pages updated automatically.</td></tr>
+          <tr><td>Closed</td><td><code>POST /api/job/update</code> + actual_cost</td><td>Full cost deviation analysis written. All related pages updated.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Viewing Your Wiki in Obsidian</h3>
+    <ol>
+      <li>Download Obsidian (free at obsidian.md)</li>
+      <li>Open it and choose "Open folder as vault"</li>
+      <li>Navigate to the <code>wiki/</code> folder inside your TakeoffAI installation</li>
+      <li>The <strong>Dashboard</strong> page shows live tables: Active Jobs, Recent Outcomes, Price Flags, Personality Standings</li>
+    </ol>
+
+    <h3>Job Tracking API Reference</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>POST /api/job/create</code></td><td>Create a new job (prospect)</td></tr>
+          <tr><td><code>POST /api/job/update</code></td><td>Advance job status, log bid and outcome</td></tr>
+          <tr><td><code>GET /api/job/{slug}</code></td><td>Get current job frontmatter as JSON</td></tr>
+          <tr><td><code>GET /api/jobs</code></td><td>List all jobs (optional <code>?status=active</code> filter)</td></tr>
+          <tr><td><code>GET /api/wiki/lint</code></td><td>Health check — orphan pages, broken links, stale jobs</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout tip">
+      <div class="callout-title">Best Practices</div>
+      <p>Create a job at the start of every real bid opportunity — not just after you've estimated. Use the same client_id across Job Tracking and Bid History Import. Log actual costs when jobs close. Run <code>GET /api/wiki/lint</code> periodically to catch orphaned pages and stale jobs.</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="how-ai-works">How the AI Works</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Model</th></tr></thead>
+        <tbody>
+          <tr><td>Estimates, tournaments, bid strategy</td><td>Claude Sonnet 4.6</td></tr>
+          <tr><td>Job tracking / wiki synthesis</td><td>Claude Haiku 4.5 (configurable)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>What the AI Knows</h3>
+    <p>TakeoffAI's estimating agents are anchored to an internal unit cost database seeded with RSMeans-style data. These are the baseline prices the AI uses before applying regional adjustments. The <strong>Price Verifier</strong> (a background system) cross-checks AI unit costs against current web sources and flags deviations above 5%. When a price is flagged, it's added to a review queue and the seed data is updated automatically.</p>
+
+    <h3>What the AI Does Not Know</h3>
+    <ul>
+      <li>Your specific subcontractor relationships or negotiated pricing</li>
+      <li>Local union rules or prevailing wage requirements (unless you describe them)</li>
+      <li>Project-specific site conditions not mentioned in the description</li>
+      <li>Real-time commodity prices (seed data is periodically updated, not live)</li>
+    </ul>
+
+    <p>Always apply your own local knowledge on top of TakeoffAI's output. The AI gives you a sharp starting point — your expertise gets you to the right final number.</p>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="workflow">Recommended Workflow</h2>
+
+    <h3>New Bid Opportunity — Start to Finish</h3>
+    <ol>
+      <li><strong>Create a job</strong> in Job Tracking — captures the prospect before you've spent any time on it</li>
+      <li><strong>Pre-Bid Estimate</strong> — get your cost anchor before reading the RFP</li>
+      <li><strong>Read the RFP</strong> — compare against your estimate; find scope gaps</li>
+      <li><strong>Bid Strategy</strong> — paste the RFP, get three scenarios and a proposal narrative</li>
+      <li><strong>Tournament</strong> (optional) — run all five personalities for a second opinion on the number</li>
+      <li><strong>Submit your bid</strong> — log it with <code>status: "bid-submitted"</code> and your number</li>
+      <li><strong>Log the outcome</strong> — win or loss, and the winning bid amount if you lost</li>
+      <li><strong>Close the job</strong> — log actual cost when the project finishes</li>
+    </ol>
+
+    <h3>Building Your History (One-Time)</h3>
+    <ol>
+      <li>Export your last 2–3 years of bids from your accounting or PM software</li>
+      <li>Format to the CSV template (Download template on the Import tab)</li>
+      <li>Import per client using consistent Client IDs</li>
+      <li>Run a tournament on a current job and compare Historical Match to your gut — it should start to resemble how you actually price work</li>
+    </ol>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <h2 id="troubleshooting">Troubleshooting</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Problem</th><th>Cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>"Enter your API key in the header"</td><td>TakeoffAI API Key field is empty</td><td>Enter the key provided with your installation in the header field</td></tr>
+          <tr><td>Estimate has suspiciously round numbers</td><td>Description lacked specific quantities</td><td>Add square footage, room counts, linear feet, or unit counts and re-run</td></tr>
+          <tr><td>Tournament taking over 2 minutes</td><td>5 agents × 5 samples = 25 parallel AI calls</td><td>Reduce samples to 2 or 3 for faster directional results</td></tr>
+          <tr><td>Historical Match bids same as Balanced</td><td>No bid history imported for this Client ID</td><td>Import historical bids using the same Client ID you use on the tournament form</td></tr>
+          <tr><td>Confidence band wider than 25%</td><td>Vague description, unusual trade combination, extreme project size</td><td>Add more specifics — square footage, material names, fixture counts — and re-run</td></tr>
+          <tr><td>Wiki pages not being created</td><td>Job not created first, or <code>job_slug</code> not passed in estimate/tournament request</td><td>Create the job via <code>POST /api/job/create</code> first, then pass the returned slug in subsequent requests</td></tr>
+          <tr><td>ELO scores dropping across all personalities</td><td>External market shift — new competition, material prices, changed client criteria</td><td>Import recent losses with winning bid amounts; review gaps; update cost assumptions</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <hr>
+
+    <footer>
+      <p>TakeoffAI is built and maintained by <strong>answerd.it</strong>. &nbsp;·&nbsp; <a href="index.html" style="color:var(--amber);text-decoration:none;">Back to App</a></p>
+    </footer>
+
+  </article>
+</div>
+
+<script>
+  // Highlight active TOC link on scroll
+  const sections = document.querySelectorAll('h2[id], h3[id]');
+  const tocLinks = document.querySelectorAll('nav.toc a');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        tocLinks.forEach(a => a.classList.remove('active'));
+        const active = document.querySelector(`nav.toc a[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>
