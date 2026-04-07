@@ -133,3 +133,87 @@ async def test_estimate_without_confidence_band_fields(monkeypatch):
     # Fields absent from agent response should not appear in API response
     assert "estimate_low" not in data
     assert "estimate_high" not in data
+
+
+@pytest.mark.anyio
+async def test_estimate_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
+    """Estimate with job_slug should fire wiki enrich_estimate in background."""
+    monkeypatch.setenv("API_KEY", "test-key")
+
+    import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+
+    # Pre-create job page
+    (tmp_path / "jobs").mkdir(parents=True)
+    wm._write_page(
+        tmp_path / "jobs" / "test-job.md",
+        {"status": "prospect", "client": "acme"},
+        "# Test\n\n## Scope\nBuild.",
+    )
+
+    mock_result = {
+        "project_summary": "Test",
+        "location": "78701",
+        "line_items": [],
+        "subtotal": 100000.0,
+        "overhead_pct": 20,
+        "overhead_amount": 20000.0,
+        "margin_pct": 12,
+        "margin_amount": 14400.0,
+        "total_bid": 134400.0,
+        "estimate_low": 120000.0,
+        "estimate_high": 150000.0,
+        "confidence": "high",
+        "notes": "",
+    }
+
+    with patch("backend.api.routes.run_prebid_calc", new=AsyncMock(return_value=mock_result)):
+        with patch("backend.agents.wiki_manager.enrich_estimate", new=AsyncMock()) as mock_enrich:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                resp = await c.post(
+                    "/api/estimate",
+                    json={
+                        "description": "Build a small office",
+                        "zip_code": "78701",
+                        "job_slug": "test-job",
+                    },
+                    headers={"X-API-Key": "test-key"},
+                )
+
+            assert resp.status_code == 200
+            # Give the background task a moment
+            import asyncio
+            await asyncio.sleep(0.1)
+            mock_enrich.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_estimate_without_job_slug_no_wiki_call(monkeypatch):
+    """Estimate without job_slug should NOT fire wiki hook."""
+    monkeypatch.setenv("API_KEY", "test-key")
+
+    mock_result = {
+        "project_summary": "Test",
+        "location": "78701",
+        "line_items": [],
+        "subtotal": 100000.0,
+        "overhead_pct": 20,
+        "overhead_amount": 20000.0,
+        "margin_pct": 12,
+        "margin_amount": 14400.0,
+        "total_bid": 134400.0,
+        "confidence": "high",
+        "notes": "",
+    }
+
+    with patch("backend.api.routes.run_prebid_calc", new=AsyncMock(return_value=mock_result)):
+        with patch("backend.agents.wiki_manager.enrich_estimate", new=AsyncMock()) as mock_enrich:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                resp = await c.post(
+                    "/api/estimate",
+                    json={"description": "Build a small office", "zip_code": "78701"},
+                    headers={"X-API-Key": "test-key"},
+                )
+
+            assert resp.status_code == 200
+            mock_enrich.assert_not_called()

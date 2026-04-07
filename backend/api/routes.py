@@ -59,6 +59,7 @@ class EstimateRequest(BaseModel):
     trade_type: str = Field(default="general", description="Primary trade (general, electrical, plumbing, etc.)")
     overhead_pct: float = Field(default=None, ge=0, le=100, description="Overhead % to apply")
     margin_pct: float = Field(default=None, ge=0, le=100, description="Target margin %")
+    job_slug: Optional[str] = Field(default=None, description="Job slug to enrich wiki page (optional)")
 
     def resolved_overhead(self) -> float:
         return self.overhead_pct if self.overhead_pct is not None else settings.default_overhead_pct
@@ -88,6 +89,9 @@ async def estimate(request: Request, req: EstimateRequest):
             overhead_pct=req.resolved_overhead(),
             margin_pct=req.resolved_margin(),
         )
+        # Fire-and-forget wiki enrichment if job_slug provided
+        if req.job_slug:
+            asyncio.ensure_future(_wiki_enrich_estimate(req.job_slug, result))
         return result
     except Exception as exc:
         logging.exception("estimate failed")
@@ -122,6 +126,7 @@ class TournamentRunRequest(BaseModel):
     client_id: Optional[str] = Field(default=None, description="Client ID for profile-aware bidding")
     n_agents: int = Field(default=5, ge=1, le=5, description="Number of agent personalities to run")
     n_samples: int = Field(default=2, ge=1, le=5, description="Samples per personality×temperature cell (1–5)")
+    job_slug: Optional[str] = Field(default=None, description="Job slug to enrich wiki page (optional)")
 
     def resolved_overhead(self) -> float:
         return self.overhead_pct if self.overhead_pct is not None else settings.default_overhead_pct
@@ -165,11 +170,15 @@ async def tournament_run(request: Request, req: TournamentRunRequest):
                 "error": e.error,
             }
 
-        return {
+        response = {
             "tournament_id": result.tournament_id,
             "entries": [_serialize_entry(e) for e in result.entries],
             "consensus_entries": [_serialize_entry(e) for e in result.consensus_entries],
         }
+        # Fire-and-forget wiki enrichment if job_slug provided
+        if req.job_slug:
+            asyncio.ensure_future(_wiki_enrich_tournament(req.job_slug, response))
+        return response
     except Exception as exc:
         logging.exception("tournament_run failed")
         raise HTTPException(status_code=500, detail="Internal server error") from exc
@@ -290,3 +299,23 @@ async def evolve_harness_endpoint(req: EvolveRequest):
     except Exception as exc:
         logging.exception("evolve_harness failed")
         raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+# ── Wiki fire-and-forget helpers ─────────────────────────────────────────────
+
+async def _wiki_enrich_estimate(job_slug: str, estimate_data: dict) -> None:
+    """Fire-and-forget: enrich wiki job page with estimate data."""
+    try:
+        from backend.agents.wiki_manager import enrich_estimate
+        await enrich_estimate(job_slug, estimate_data)
+    except Exception:
+        logging.exception("wiki enrich_estimate failed for %s (non-fatal)", job_slug)
+
+
+async def _wiki_enrich_tournament(job_slug: str, tournament_data: dict) -> None:
+    """Fire-and-forget: enrich wiki job page with tournament data."""
+    try:
+        from backend.agents.wiki_manager import enrich_tournament
+        await enrich_tournament(job_slug, tournament_data)
+    except Exception:
+        logging.exception("wiki enrich_tournament failed for %s (non-fatal)", job_slug)
