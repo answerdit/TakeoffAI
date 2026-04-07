@@ -114,14 +114,13 @@ async def estimate_preprocess_pdf(
     Read a blueprint PDF and return an estimate-ready draft description.
     Optionally updates the wiki job Scope section if job_slug is provided.
     """
-    if pdf.content_type not in ("application/pdf", "application/octet-stream"):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
-
     pdf_bytes = await pdf.read()
-    if len(pdf_bytes) > _MAX_PDF_BYTES:
-        raise HTTPException(status_code=400, detail="File too large. Maximum size is 32MB.")
     if not pdf_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(pdf_bytes) > _MAX_PDF_BYTES:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 32MB.")
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
 
     try:
         draft = await preprocess_blueprint(pdf_bytes, zip_code, trade_type)
@@ -359,6 +358,7 @@ async def _wiki_enrich_tournament(job_slug: str, tournament_data: dict) -> None:
 
 
 async def _wiki_enrich_scope(job_slug: str, draft_text: str) -> None:
+    """Fire-and-forget: update wiki job Scope section with blueprint-extracted draft."""
     try:
         from backend.agents.wiki_manager import enrich_scope_from_blueprint
         await enrich_scope_from_blueprint(job_slug, draft_text)
