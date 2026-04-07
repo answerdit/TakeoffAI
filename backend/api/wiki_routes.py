@@ -8,14 +8,11 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from backend.agents import wiki_manager
+from backend.api.routes import limiter
 
 logger = logging.getLogger(__name__)
-
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 wiki_router = APIRouter()
 
