@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 import aiosqlite
-from fastapi import APIRouter, Depends, HTTPException, Request, Security
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Security, UploadFile
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
 from slowapi import Limiter
@@ -20,7 +20,7 @@ from slowapi.util import get_remote_address
 
 from backend.agents.feedback_loop import exclude_agent as _exclude_agent, reset_agent_history as _reset_agent_history
 from backend.agents.harness_evolver import evolve_harness as _evolve_harness, _get_lock
-from backend.agents.pre_bid_calc import run_prebid_calc
+from backend.agents.pre_bid_calc import preprocess_blueprint, run_prebid_calc
 from backend.agents.bid_to_win import run_bid_to_win
 from backend.agents.tournament import run_tournament
 from backend.agents.judge import judge_tournament
@@ -96,6 +96,43 @@ async def estimate(request: Request, req: EstimateRequest):
     except Exception as exc:
         logging.exception("estimate failed")
         raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+_MAX_PDF_BYTES = 32 * 1024 * 1024  # 32 MB
+
+
+@router.post("/estimate/preprocess-pdf")
+@limiter.limit("10/minute")
+async def estimate_preprocess_pdf(
+    request: Request,
+    pdf: UploadFile = File(...),
+    zip_code: str = Form(..., min_length=5, max_length=10),
+    trade_type: str = Form(default="general"),
+    job_slug: Optional[str] = Form(default=None),
+):
+    """
+    Read a blueprint PDF and return an estimate-ready draft description.
+    Optionally updates the wiki job Scope section if job_slug is provided.
+    """
+    if pdf.content_type not in ("application/pdf", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
+
+    pdf_bytes = await pdf.read()
+    if len(pdf_bytes) > _MAX_PDF_BYTES:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 32MB.")
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    try:
+        draft = await preprocess_blueprint(pdf_bytes, zip_code, trade_type)
+    except Exception as exc:
+        logging.exception("preprocess_blueprint failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+    if job_slug:
+        asyncio.ensure_future(_wiki_enrich_scope(job_slug, draft))
+
+    return {"draft": draft}
 
 
 @router.post("/bid/strategy")
@@ -319,3 +356,13 @@ async def _wiki_enrich_tournament(job_slug: str, tournament_data: dict) -> None:
         await enrich_tournament(job_slug, tournament_data)
     except Exception:
         logging.exception("wiki enrich_tournament failed for %s (non-fatal)", job_slug)
+
+
+async def _wiki_enrich_scope(job_slug: str, draft_text: str) -> None:
+    try:
+        from backend.agents.wiki_manager import enrich_scope_from_blueprint
+        await enrich_scope_from_blueprint(job_slug, draft_text)
+    except Exception:
+        logging.exception(
+            "wiki enrich_scope_from_blueprint failed for %s (non-fatal)", job_slug
+        )
