@@ -1762,10 +1762,11 @@
       return;
     }
     clearError();
-    selectedFile = file;
+    selectedFile         = file;
     filename.textContent = file.name;
     btn.style.display    = 'inline-block';
     notice.style.display = 'none';
+    descField.value      = '';
   }
 
   dropZone.addEventListener('click', () => fileInput.click());
