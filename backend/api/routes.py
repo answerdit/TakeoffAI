@@ -37,8 +37,11 @@ _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def verify_api_key(key: str = Security(_api_key_header)):
-    configured_key = os.environ.get("API_KEY", settings.api_key)
+    env_key = os.environ.get("API_KEY")
+    configured_key = env_key if env_key is not None else settings.api_key
     if not configured_key:
+        if env_key is None and settings.app_env == "development":
+            return
         raise HTTPException(status_code=403, detail="API key not configured")
     if key != configured_key:
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
