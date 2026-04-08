@@ -6,9 +6,12 @@ Inputs:  estimate JSON (from PreBidCalc), RFP text, project type, known competit
 Outputs: bid scenarios (low/mid/high), win probability, proposal narrative draft
 """
 
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 
-client = Anthropic()
+from backend.agents.utils import call_with_json_retry
+from backend.config import settings
+
+client = AsyncAnthropic()
 
 SYSTEM_PROMPT = """You are BidToWin, an expert construction bid strategist for TakeoffAI by answerd.it.
 
@@ -65,7 +68,7 @@ Always return valid JSON in this format:
 }"""
 
 
-def run_bid_to_win(
+async def run_bid_to_win(
     estimate: dict,
     rfp_text: str,
     project_type: str = "commercial",
@@ -90,17 +93,10 @@ Known Competitors: {competitors_str}
 Please analyze this RFP and generate a complete bid strategy with three scenarios.
 """
 
-    response = client.messages.create(
-        model="claude-sonnet-4-5",
+    return await call_with_json_retry(
+        client,
+        model=settings.claude_model,
         max_tokens=4096,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
     )
-
-    import json
-    raw = response.content[0].text
-    if raw.strip().startswith("```"):
-        raw = raw.strip().split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw.strip())
