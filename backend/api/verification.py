@@ -201,9 +201,7 @@ async def submit_outcome(req: OutcomeRequest):
     """Submit actual job cost after closeout; updates calibration data."""
     _validate_client_id(req.client_id)
     try:
-        import asyncio
-        profile = await asyncio.to_thread(
-            record_actual_outcome,
+        profile = await record_actual_outcome(
             client_id=req.client_id,
             tournament_id=req.tournament_id,
             actual_cost=req.actual_cost,

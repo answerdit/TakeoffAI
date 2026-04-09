@@ -44,10 +44,10 @@ def test_compute_brier_score_empty():
     assert score is None
 
 
-def test_record_actual_outcome_updates_calibration(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_record_actual_outcome_updates_calibration(tmp_path, monkeypatch):
     """record_actual_outcome writes deviation history and computes Brier score."""
     import aiosqlite
-    import asyncio
 
     # Patch PROFILES_DIR to tmp_path
     import backend.agents.feedback_loop as fl
@@ -58,27 +58,24 @@ def test_record_actual_outcome_updates_calibration(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
     from backend.api.main import _CREATE_TABLES
 
-    async def setup_db():
-        async with aiosqlite.connect(db_path) as db:
-            await db.executescript(_CREATE_TABLES)
+    async with aiosqlite.connect(db_path) as db:
+        await db.executescript(_CREATE_TABLES)
+        await db.execute(
+            "INSERT INTO bid_tournaments (id, client_id, project_description, zip_code) VALUES (?,?,?,?)",
+            (1, "client1", "40x60 metal building", "76801")
+        )
+        for agent, bid in [("conservative", 170000), ("balanced", 155000),
+                            ("aggressive", 140000), ("historical_match", 160000),
+                            ("market_beater", 152000)]:
             await db.execute(
-                "INSERT INTO bid_tournaments (id, client_id, project_description, zip_code) VALUES (?,?,?,?)",
-                (1, "client1", "40x60 metal building", "76801")
+                "INSERT INTO tournament_entries (tournament_id, agent_name, total_bid, won) VALUES (?,?,?,?)",
+                (1, agent, bid, 1 if agent == "balanced" else 0)
             )
-            for agent, bid in [("conservative", 170000), ("balanced", 155000),
-                                ("aggressive", 140000), ("historical_match", 160000),
-                                ("market_beater", 152000)]:
-                await db.execute(
-                    "INSERT INTO tournament_entries (tournament_id, agent_name, total_bid, won) VALUES (?,?,?,?)",
-                    (1, agent, bid, 1 if agent == "balanced" else 0)
-                )
-            await db.commit()
-
-    asyncio.run(setup_db())
+        await db.commit()
 
     monkeypatch.setattr(fl, "DB_PATH", db_path)
 
-    result = fl.record_actual_outcome(
+    result = await fl.record_actual_outcome(
         client_id="client1",
         tournament_id=1,
         actual_cost=150000.0,
@@ -144,13 +141,13 @@ def test_record_actual_outcome_red_flags_high_deviation_agent(tmp_path, monkeypa
     monkeypatch.setattr(fl, "DB_PATH", db_path)
 
     # aggressive bid 115000, actual 100000 → deviation = 15% → 5th high deviation
-    result = fl.record_actual_outcome(
+    result = asyncio.run(fl.record_actual_outcome(
         client_id="client2",
         tournament_id=2,
         actual_cost=100000.0,
         won=True,
         win_probability=0.70,
-    )
+    ))
 
     assert "aggressive" in result["calibration"]["red_flagged_agents"]
 

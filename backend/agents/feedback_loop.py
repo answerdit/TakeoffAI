@@ -248,7 +248,7 @@ def _compute_brier_score(
     return round(sum((p - a) ** 2 for p, a in zip(predictions, actuals)) / n, 4)
 
 
-def record_actual_outcome(
+async def record_actual_outcome(
     client_id: str,
     tournament_id: int,
     actual_cost: float,
@@ -265,19 +265,15 @@ def record_actual_outcome(
     - Appends win_probability prediction + actual outcome; recomputes Brier score
     - Writes updated profile to disk; returns updated profile dict
     """
-    import asyncio
     import aiosqlite
 
-    async def _load_entries():
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT agent_name, total_bid FROM tournament_entries WHERE tournament_id = ?",
-                (tournament_id,),
-            ) as cur:
-                return [dict(r) for r in await cur.fetchall()]
-
-    entries = asyncio.run(_load_entries())
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT agent_name, total_bid FROM tournament_entries WHERE tournament_id = ?",
+            (tournament_id,),
+        ) as cur:
+            entries = [dict(r) for r in await cur.fetchall()]
 
     if not entries:
         raise ValueError(f"No entries found for tournament {tournament_id}")
