@@ -48,3 +48,6 @@ Client Estimates/
 # Tool/runtime artifacts
 .superpowers/
 backend/data/traces/
+
+# Obsidian vault config
+.obsidian/
