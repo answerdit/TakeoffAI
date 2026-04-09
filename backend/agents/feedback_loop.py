@@ -8,7 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from backend.config import settings
+
 PROFILES_DIR = Path(__file__).parent.parent / "data" / "client_profiles"
+DB_PATH = settings.db_path
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
 ELO_WIN_DELTA = 32
@@ -224,8 +227,6 @@ def load_client_context(client_id: str) -> str:
 
 
 # ── Calibration & Accuracy (appended — no existing functions modified) ────────
-
-DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
 
 RED_FLAG_DEVIATION_THRESHOLD = 5.0   # % average deviation to red-flag an agent
 RED_FLAG_LOOKBACK = 5                # number of most recent jobs to consider

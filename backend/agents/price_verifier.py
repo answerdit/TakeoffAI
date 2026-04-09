@@ -19,9 +19,11 @@ from urllib.parse import quote_plus
 import httpx
 from anthropic import Anthropic
 
+from backend.config import settings
+
 anthropic_client = Anthropic()
 
-DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
+DB_PATH = settings.db_path
 CSV_PATH = Path(__file__).parent.parent / "data" / "material_costs.csv"
 
 DEVIATION_THRESHOLD_PCT = 5.0   # flag if abs deviation > 5%

@@ -7,14 +7,14 @@ Three modes: HUMAN (explicit pick), HISTORICAL (closest to actual winning bid), 
 import asyncio
 import json
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 
 import aiosqlite
 
 from backend.agents.price_verifier import verify_line_items
+from backend.config import settings
 
-DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
+DB_PATH = settings.db_path
 AUTO_MODE_MIN_TOURNAMENTS = 20
 
 

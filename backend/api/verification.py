@@ -7,7 +7,6 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Literal, Optional
 
 import aiosqlite
@@ -16,9 +15,10 @@ from pydantic import BaseModel
 
 from backend.agents.feedback_loop import get_agent_accuracy_report, record_actual_outcome
 from backend.agents.price_verifier import verify_line_items, _update_seed_csv
+from backend.config import settings
 from backend.scheduler import run_verification_batch
 
-DB_PATH = str(Path(__file__).parent.parent / "data" / "takeoffai.db")
+DB_PATH = settings.db_path
 
 verification_router = APIRouter()
 
