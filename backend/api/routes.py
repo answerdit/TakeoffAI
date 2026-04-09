@@ -14,7 +14,7 @@ from typing import Optional
 import aiosqlite
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Security, UploadFile
 from fastapi.security.api_key import APIKeyHeader
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -73,9 +73,17 @@ class EstimateRequest(BaseModel):
 
 class BidStrategyRequest(BaseModel):
     estimate: dict = Field(..., description="Estimate JSON from /api/estimate")
-    rfp_text: str = Field(..., min_length=20, description="Raw RFP / scope-of-work text")
+    rfp_text: str = Field(..., min_length=20, max_length=50000, description="Raw RFP / scope-of-work text")
     project_type: str = Field(default="commercial", description="commercial | residential | government")
-    known_competitors: list[str] | None = Field(default=None, description="Known bidders (optional)")
+    known_competitors: list[str] | None = Field(default=None, description="Known bidders (optional)", max_length=20)
+
+    @model_validator(mode="after")
+    def check_estimate_size(self):
+        import json
+        raw = json.dumps(self.estimate)
+        if len(raw) > 500_000:
+            raise ValueError("estimate JSON exceeds 500KB limit")
+        return self
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
