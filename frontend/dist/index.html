@@ -1614,7 +1614,11 @@
 
     btn.textContent = 'Parsing…'; btn.disabled = true;
     try {
-      const res = await fetch(`${API_BASE}/api/upload/bids`, { method: 'POST', headers: { 'X-API-Key': hdrApiKey.value }, body: fd });
+      const fileName = fileInput.files[0]?.name?.toLowerCase() || '';
+      const uploadPath = fileName.endsWith('.xlsx') || fileName.endsWith('.xls')
+        ? `${API_BASE}/api/upload/bids/excel`
+        : `${API_BASE}/api/upload/bids/csv`;
+      const res = await fetch(uploadPath, { method: 'POST', headers: { 'X-API-Key': hdrApiKey.value }, body: fd });
       const data = await res.json();
       if (!res.ok) { showError(errEl, data.detail || 'Upload failed.'); return; }
 
@@ -1810,7 +1814,7 @@
     const apiKey = document.getElementById('hdr-api-key')?.value?.trim() || '';
 
     try {
-      const resp = await fetch('/api/estimate/preprocess-pdf', {
+      const resp = await fetch(`${API_BASE}/api/estimate/preprocess-pdf`, {
         method:  'POST',
         headers: apiKey ? { 'X-API-Key': apiKey } : {},
         body:    form,
