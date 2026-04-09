@@ -28,15 +28,13 @@ def _load_material_costs() -> list[dict]:
         return list(csv.DictReader(f))
 
 
-_MATERIAL_COSTS: list[dict] = _load_material_costs()
-
-
 def _format_cost_table() -> str:
-    """Format the seed CSV as a readable table for the system prompt."""
-    if not _MATERIAL_COSTS:
+    """Format the seed CSV as a readable table for the system prompt. Reloads on every call."""
+    costs = _load_material_costs()
+    if not costs:
         return "(no seed data available)"
     lines = ["| Item | Unit | Low $/unit | High $/unit | Trade |", "| --- | --- | --- | --- | --- |"]
-    for row in _MATERIAL_COSTS:
+    for row in costs:
         lines.append(
             f"| {row['item']} | {row['unit']} | ${row['low_cost']} | ${row['high_cost']} | {row['trade_category']} |"
         )
@@ -45,7 +43,7 @@ def _format_cost_table() -> str:
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = f"""You are PreBidCalc, an expert construction cost estimator for TakeoffAI by answerd.it.
+_SYSTEM_PROMPT_TEMPLATE = """You are PreBidCalc, an expert construction cost estimator for TakeoffAI by answerd.it.
 
 Your job is to:
 1. Parse the project description and extract measurable quantities (sqft, LF, units, etc.)
@@ -58,7 +56,7 @@ Your job is to:
 
 ## Reference Material Unit Costs (seed data)
 
-{_format_cost_table()}
+{cost_table}
 
 For items not in the table, use your expert knowledge of current market rates.
 
@@ -89,6 +87,11 @@ Always return valid JSON in this exact format — no markdown fences, no extra t
   "confidence": "low|medium|high",
   "notes": "..."
 }}"""
+
+
+def _build_system_prompt() -> str:
+    """Build system prompt with current material costs (reloaded from CSV)."""
+    return _SYSTEM_PROMPT_TEMPLATE.format(cost_table=_format_cost_table())
 
 # ── Blueprint extraction prompts ──────────────────────────────────────────────
 
@@ -199,7 +202,7 @@ async def run_prebid_calc_with_modifier(
     Run PreBidCalc with an optional personality modifier appended to the system prompt.
     Used by the tournament engine to inject bidding-style instructions per agent.
     """
-    system = SYSTEM_PROMPT
+    system = _build_system_prompt()
     if system_prompt_modifier:
         system = system + f"\n\n---\n\n{system_prompt_modifier}"
 
