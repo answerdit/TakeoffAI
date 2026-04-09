@@ -216,22 +216,13 @@ Please generate a detailed line-item cost estimate for this project."""
         client,
         model=settings.claude_model,
         max_tokens=8192,
-        system=system,
-        messages=[
+        system=[
             {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": system,
-                        "cache_control": {"type": "ephemeral"},
-                    },
-                    {
-                        "type": "text",
-                        "text": user_message,
-                    },
-                ],
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"},
             }
         ],
+        messages=[{"role": "user", "content": user_message}],
         temperature=temperature,
     )
