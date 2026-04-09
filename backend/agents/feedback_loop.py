@@ -4,7 +4,7 @@ Tracks client bid history, agent ELO scores, and win statistics.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -25,7 +25,7 @@ def _profile_path(client_id: str) -> Path:
 def _empty_profile(client_id: str) -> dict:
     return {
         "client_id": client_id,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "winning_examples": [],
         "agent_elo": {agent: 1000 for agent in ALL_AGENTS},
         "stats": {
@@ -69,7 +69,7 @@ def update_client_profile(client_id: str, winner_entry: dict) -> dict:
         "agent_name": winner_agent,
         "total_bid": total_bid,
         "estimate_snapshot": estimate_snapshot,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     profile["winning_examples"].append(example)
     if len(profile["winning_examples"]) > MAX_WINNING_EXAMPLES:
@@ -152,7 +152,7 @@ def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
                 "actual_cost": bid.get("actual_cost"),
                 "notes": bid.get("notes", ""),
             },
-            "timestamp": bid.get("bid_date", datetime.utcnow().isoformat()),
+            "timestamp": bid.get("bid_date", datetime.now(timezone.utc).isoformat()),
             "source": "upload",
         }
         profile["winning_examples"].append(example)
