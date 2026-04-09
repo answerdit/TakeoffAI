@@ -14,7 +14,7 @@ async def test_fetch_supplier_price_returns_float_on_success():
     mock_message.content = [mock_response]
 
     with patch("backend.agents.price_verifier.anthropic_client") as mock_client:
-        mock_client.messages.create.return_value = mock_message
+        mock_client.messages.create = AsyncMock(return_value=mock_message)
         with patch("backend.agents.price_verifier.httpx") as mock_httpx:
             mock_http_response = MagicMock()
             mock_http_response.status_code = 200
@@ -49,7 +49,7 @@ async def test_fetch_supplier_price_returns_none_when_claude_returns_no_price():
     mock_message.content = [mock_response]
 
     with patch("backend.agents.price_verifier.anthropic_client") as mock_client:
-        mock_client.messages.create.return_value = mock_message
+        mock_client.messages.create = AsyncMock(return_value=mock_message)
         with patch("backend.agents.price_verifier.httpx") as mock_httpx:
             mock_http_response = MagicMock()
             mock_http_response.status_code = 200
@@ -71,7 +71,7 @@ async def test_web_search_fallback_returns_prices():
     mock_message.content = [mock_response]
 
     with patch("backend.agents.price_verifier.anthropic_client") as mock_client:
-        mock_client.messages.create.return_value = mock_message
+        mock_client.messages.create = AsyncMock(return_value=mock_message)
         with patch("backend.agents.price_verifier.httpx") as mock_httpx:
             mock_http_response = MagicMock()
             mock_http_response.status_code = 200

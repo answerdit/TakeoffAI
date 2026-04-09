@@ -17,11 +17,11 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 import httpx
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 
 from backend.config import settings
 
-anthropic_client = Anthropic()
+anthropic_client = AsyncAnthropic()
 
 DB_PATH = settings.db_path
 CSV_PATH = Path(__file__).parent.parent / "data" / "material_costs.csv"
@@ -72,7 +72,7 @@ async def _fetch_supplier_price(
 
     # Ask Claude to extract the price from the HTML snippet
     try:
-        msg = anthropic_client.messages.create(
+        msg = await anthropic_client.messages.create(
             model="claude-haiku-4-5",
             max_tokens=64,
             system=(
@@ -117,7 +117,7 @@ async def _web_search_price(item: str, unit: str) -> list[float]:
         return []
 
     try:
-        msg = anthropic_client.messages.create(
+        msg = await anthropic_client.messages.create(
             model="claude-haiku-4-5",
             max_tokens=128,
             system=(
