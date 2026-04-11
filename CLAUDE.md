@@ -100,7 +100,7 @@ Profile writes are synchronous (called via `asyncio.to_thread` from async contex
 Three modes, selected based on what's provided to `POST /api/tournament/judge`:
 - **HUMAN** — `winner_agent_name` provided; marks that agent as winner.
 - **HISTORICAL** — `actual_winning_bid` provided; winner = entry closest to that amount.
-- **AUTO** — neither provided and client has ≥ 20 tournaments; scores by ELO + accuracy.
+- **AUTO** — neither provided and client has ≥ 20 tournaments; winner = agent with highest `win_rate_by_agent` from the client profile.
 
 After judging, triggers `update_client_profile` (feedback loop) and wiki cascade (fire-and-forget). The return dict includes `client_id` so downstream fire-and-forget hooks (e.g. Workspace notification) don't need a second DB lookup.
 

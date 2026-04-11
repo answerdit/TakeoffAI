@@ -676,7 +676,7 @@
       <li><strong>Enter zip code and trade type.</strong></li>
       <li><strong>Set Client ID.</strong> Use a consistent short identifier (e.g., <code>acme_construction</code>). The system pulls that client's win history to calibrate the Historical Match personality. Use <code>default</code> if you have no history yet.</li>
       <li><strong>Set Overhead % and Margin %.</strong></li>
-      <li><strong>Set Agents (max 5) and Samples per agent (max 5).</strong> Each personality runs multiple times and collapses to a consensus bid. More samples = more stable results, longer wait. Default is 5 agents × 3 samples.</li>
+      <li><strong>Set Agents (max 5) and Samples per agent (max 5).</strong> Each personality runs at 3 temperatures and collapses to a consensus bid. More samples = more stable results, longer wait. Default is 5 agents × 3 temperatures × 2 samples = 30 calls.</li>
       <li><strong>Click Run Tournament.</strong> The personalities run in parallel. Expect 30–90 seconds.</li>
     </ol>
 
@@ -902,7 +902,7 @@
         <tbody>
           <tr><td>"Enter your API key in the header"</td><td>TakeoffAI API Key field is empty</td><td>Enter the key provided with your installation in the header field</td></tr>
           <tr><td>Estimate has suspiciously round numbers</td><td>Description lacked specific quantities</td><td>Add square footage, room counts, linear feet, or unit counts and re-run</td></tr>
-          <tr><td>Tournament taking over 2 minutes</td><td>5 agents × 5 samples = 25 parallel AI calls</td><td>Reduce samples to 2 or 3 for faster directional results</td></tr>
+          <tr><td>Tournament taking over 2 minutes</td><td>At max settings the grid is 5 agents × 3 temperatures × 5 samples = 75 calls, with 10 in flight at once</td><td>Reduce samples to 2 or 3 for faster directional results</td></tr>
           <tr><td>Historical Match bids same as Balanced</td><td>No bid history imported for this Client ID</td><td>Import historical bids using the same Client ID you use on the tournament form</td></tr>
           <tr><td>Confidence band wider than 25%</td><td>Vague description, unusual trade combination, extreme project size</td><td>Add more specifics — square footage, material names, fixture counts — and re-run</td></tr>
           <tr><td>Wiki pages not being created</td><td>Job not created first, or <code>job_slug</code> not passed in estimate/tournament request</td><td>Create the job via <code>POST /api/job/create</code> first, then pass the returned slug in subsequent requests</td></tr>
