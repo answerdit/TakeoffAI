@@ -770,11 +770,12 @@ btn.addEventListener('click', async () => {
   }
 
   const recognition = new SpeechRec();
-  recognition.continuous     = false;
+  recognition.continuous     = true;
   recognition.interimResults = true;
   recognition.lang           = 'en-US';
 
-  let _snapshotBefore = '';  // textarea value before recording started
+  let _snapshotBefore  = '';  // textarea value before recording started
+  let _sessionFinals   = '';  // accumulated final transcript within this session
   let _lastInserted   = '';  // only the segment dictation appended
   let _active         = false;
   let _undoTimer      = null;
@@ -812,6 +813,7 @@ btn.addEventListener('click', async () => {
     } else {
       _active         = true;
       _snapshotBefore = ta.value;
+      _sessionFinals  = '';
       setMicError('');
       setMicState('recording');
       try { recognition.start(); } catch (_) { /* already running */ }
@@ -819,24 +821,40 @@ btn.addEventListener('click', async () => {
   });
 
   // ── Results: interim preview + final append ─────────────────────
+  // In continuous mode e.results accumulates the whole session.
+  // Split finals from the current interim chunk manually.
   recognition.addEventListener('result', (e) => {
-    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
-    const isFinal    = e.results[e.results.length - 1].isFinal;
+    let finals = '';
+    let interim = '';
+    for (let i = 0; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        finals += e.results[i][0].transcript;
+      } else {
+        interim += e.results[i][0].transcript;
+      }
+    }
+    _sessionFinals = finals;
+    const sep     = _snapshotBefore && !_snapshotBefore.endsWith(' ') ? ' ' : '';
+    const committed = sep + _sessionFinals.trim();
 
-    if (isFinal) {
-      const sep     = _snapshotBefore && !_snapshotBefore.endsWith(' ') ? ' ' : '';
-      _lastInserted = sep + transcript.trim();
+    if (interim) {
+      // Live preview: show committed finals + current interim
+      ta.value = _snapshotBefore + committed + ' ' + interim;
+    } else {
+      // All final — commit and expose for undo
+      _lastInserted = committed;
       ta.value      = _snapshotBefore + _lastInserted;
       showUndo();
-    } else {
-      // Live interim: preview appended to snapshot (not committed yet)
-      ta.value = _snapshotBefore + (_snapshotBefore ? ' ' : '') + transcript;
     }
   });
 
   recognition.addEventListener('end', () => {
-    setMicState('idle');
-    _active = false;
+    if (_active) {
+      // Unexpected stop while toggle is on — restart to keep continuous
+      try { recognition.start(); } catch (_) {}
+    } else {
+      setMicState('idle');
+    }
   });
 
   recognition.addEventListener('error', (e) => {
