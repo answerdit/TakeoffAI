@@ -123,7 +123,8 @@ TakeoffAI
 ### HistoricalRetrieval (`backend/agents/historical_retrieval.py`)
 - **Read path:** `wiki/jobs/*.md` filtered by `status ∈ {won, lost, closed}` and matching `trade_type`
 - **Scoring:** `10.0` same-client bonus + `5.0` trade match + `2.0` zip3 prefix match + `3.0 × jaccard(query, body)` — deterministic, no LLM
-- **Consumer:** `tournament.py` calls `get_comparable_jobs()` before dispatching personality grid; `format_comparables_for_prompt()` injects the result into every personality's system prompt.
+- **Consumer:** `tournament.py` dispatches `get_comparable_jobs()` via `asyncio.to_thread` (sync file I/O must stay off the event loop as the corpus grows) before dispatching the personality grid; `format_comparables_for_prompt()` injects the result into every personality's system prompt.
+- **Tenancy (important):** TakeoffAI is **single-tenant by deployment** — one contractor per Docker install. `client_id` is the contractor's *customer* (homeowner, GC, property manager), not a multi-tenant isolation boundary. Retrieval intentionally returns other customers' closed jobs with a `+10` same-customer relevance bump, because pricing a kitchen remodel for customer A should learn from kitchen remodels the same contractor did for customers B, C, D. A hosted multi-contractor `app.takeoffai.ai` deployment would need a hard filter at the *contractor* level — not the customer level.
 - **Self-feeding:** the corpus grows every time a tournament is judged in HISTORICAL mode via the WikiManager cascade above.
 
 ## Data Layer

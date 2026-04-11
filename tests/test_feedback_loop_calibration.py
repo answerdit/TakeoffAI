@@ -290,3 +290,47 @@ def test_get_accuracy_annotations_corrupt_json(tmp_path, monkeypatch):
 
     out = fl.get_accuracy_annotations("broken")
     assert out == {"per_agent": {}, "recommended_agent": None}
+
+
+def test_annotations_and_report_agree_on_legacy_long_history(tmp_path, monkeypatch):
+    """P4 regression: legacy profiles written before update_calibration
+    started truncating agent_deviation_history at write time could carry
+    >RED_FLAG_LOOKBACK entries. The annotation path (used by /api/tournament/run
+    rerank) and the report path (/api/verify/accuracy/{client}) must window
+    to the same tail so rerank and report don't disagree on the same profile."""
+    import backend.agents.feedback_loop as fl
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    profile = json.loads(_make_profile("legacy", tmp_path).read_text())
+    # Ancient terrible deviations that predate the truncation fix. If either
+    # function averaged over the full history the two would disagree by ~5x.
+    profile["calibration"] = {
+        "win_prob_predictions": [],
+        "win_prob_actuals": [],
+        "brier_score": None,
+        "confidence_accuracy": {},
+        "agent_deviation_history": {
+            "conservative": [50.0, 50.0, 50.0, 50.0, 50.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "balanced": [1.0, 1.0, 1.0, 1.0, 1.0],
+            "aggressive": [1.0, 1.0, 1.0, 1.0, 1.0],
+            "historical_match": [1.0, 1.0, 1.0, 1.0, 1.0],
+            "market_beater": [1.0, 1.0, 1.0, 1.0, 1.0],
+        },
+        "red_flagged_agents": [],
+    }
+    (tmp_path / "legacy.json").write_text(json.dumps(profile))
+
+    ann = fl.get_accuracy_annotations("legacy")
+    report = fl.get_agent_accuracy_report("legacy")
+
+    for agent in fl.ALL_AGENTS:
+        ann_val = ann["per_agent"][agent]["avg_deviation_pct"]
+        rep_val = report[agent]["avg_deviation_pct"]
+        assert ann_val == rep_val, (
+            f"{agent}: annotation={ann_val} but report={rep_val} — paths must agree"
+        )
+
+    # And the windowed value for conservative must be 1.0, not the ~25.5
+    # you'd get by averaging the full 10-entry history.
+    assert ann["per_agent"]["conservative"]["avg_deviation_pct"] == pytest.approx(1.0)
+    assert ann["per_agent"]["conservative"]["closed_job_count"] == 5

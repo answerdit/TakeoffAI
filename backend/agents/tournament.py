@@ -344,7 +344,11 @@ async def run_tournament(
     historical_comparables_block = ""
     if client_id:
         try:
-            comparables = get_comparable_jobs(
+            # Wiki scan + markdown parsing is sync file I/O — keep it off the
+            # event loop so growing wiki/jobs/ corpora don't stall concurrent
+            # tournament requests.
+            comparables = await asyncio.to_thread(
+                get_comparable_jobs,
                 client_id=client_id,
                 trade_type=trade_type,
                 description=description,

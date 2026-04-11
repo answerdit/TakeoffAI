@@ -2,6 +2,16 @@
 Historical bid retrieval — TakeoffAI
 Deterministic, synchronous lookup of past comparable jobs from wiki/jobs/.
 No LLM calls. Empty vault → returns [] without error.
+
+Tenancy model: TakeoffAI is single-tenant by deployment — one contractor per
+install. `client_id` here is the *contractor's customer* (homeowner, GC,
+property manager), not a multi-tenant boundary. Cross-customer retrieval is
+intentional: pricing a kitchen remodel for customer A should learn from
+kitchen remodels the same contractor did for customers B, C, and D. The
+10.0 same-client bonus is recency/relationship weighting, not an isolation
+gate. If TakeoffAI ever goes multi-tenant (hosted app.takeoffai.ai), this
+module must grow a hard filter at the contractor level, not the client
+level.
 """
 
 import logging
@@ -176,7 +186,7 @@ def format_comparables_for_prompt(jobs: list[dict]) -> str:
             bid_parts.append(f"Outcome: {outcome}")
         if actual_cost is not None:
             bid_parts.append(f"Actual cost: ${float(actual_cost):,.0f}")
-            if our_bid is not None and float(actual_cost) > 0:
+            if our_bid is not None and float(our_bid) > 0:
                 margin = (float(our_bid) - float(actual_cost)) / float(our_bid) * 100
                 sign = "+" if margin >= 0 else ""
                 bid_parts.append(f"Realized margin: {sign}{margin:.1f}%")

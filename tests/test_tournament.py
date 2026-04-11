@@ -508,3 +508,66 @@ def test_rerank_no_data_tier_sits_between_data_and_flagged(monkeypatch):
         i < no_data_idx for i in data_indices
     ), f"no-data agent leaked ahead of an agent with data: {names}"
     assert no_data_idx < flagged_idx, f"no-data agent must sort before flagged agent: {names}"
+
+
+@pytest.mark.anyio
+async def test_historical_retrieval_runs_off_event_loop(tmp_path, monkeypatch):
+    """P2 regression: get_comparable_jobs is synchronous file I/O (glob +
+    frontmatter parse for every job in the vault). It must be dispatched via
+    asyncio.to_thread inside run_tournament so a growing wiki/jobs/ corpus
+    doesn't stall concurrent tournament requests on the event loop."""
+    monkeypatch.setattr(
+        "backend.agents.tournament.DB_PATH",
+        str(tmp_path / "test.db"),
+    )
+
+    # Hermetic vault + profile paths so the test doesn't read the real repo.
+    import backend.agents._wiki_io as _io
+    import backend.agents.feedback_loop as fl
+
+    monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path / "profiles")
+
+    import aiosqlite
+
+    from backend.api.main import _CREATE_TABLES
+
+    async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
+        await db.executescript(_CREATE_TABLES)
+        for sql in [
+            "ALTER TABLE tournament_entries ADD COLUMN temperature REAL DEFAULT 0.7",
+            "ALTER TABLE tournament_entries ADD COLUMN is_consensus INTEGER DEFAULT 0",
+        ]:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
+        await db.commit()
+
+    import asyncio
+
+    real_to_thread = asyncio.to_thread
+    to_thread_targets: list[str] = []
+
+    async def recording_to_thread(func, /, *args, **kwargs):
+        name = getattr(func, "__name__", repr(func))
+        to_thread_targets.append(name)
+        return await real_to_thread(func, *args, **kwargs)
+
+    with patch(
+        "backend.agents.tournament.run_prebid_calc_with_modifier",
+        new=AsyncMock(return_value=FAKE_ESTIMATE),
+    ), patch("backend.agents.tournament.asyncio.to_thread", new=recording_to_thread):
+        from backend.agents.tournament import run_tournament
+
+        await run_tournament(
+            description="Build a small office in Austin",
+            zip_code="78701",
+            client_id="acme",
+            n_samples=1,
+        )
+
+    assert "get_comparable_jobs" in to_thread_targets, (
+        "get_comparable_jobs must run via asyncio.to_thread, not directly on "
+        f"the event loop. Dispatched via to_thread: {to_thread_targets}"
+    )

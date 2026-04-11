@@ -221,3 +221,75 @@ def test_gitkeep_file_is_ignored(patch_jobs_dir):
     result = get_comparable_jobs("acme", "residential", "kitchen", zip_code="76801")
     assert len(result) == 1
     assert result[0]["project_name"] == "real-job"
+
+
+def test_cross_client_rows_are_intentionally_returned(patch_jobs_dir):
+    """Single-tenant design: retrieval must return other customers' closed
+    jobs too, because pricing generalizes across a contractor's customers.
+    Same-client only gets a +10 relevance bump, never exclusivity. This test
+    pins the design decision so a future 'privacy fix' can't silently filter
+    out the cross-customer learning signal."""
+    jobs_dir = patch_jobs_dir
+    _write_job(
+        "acme-kitchen",
+        _base_meta(client="acme", trade="residential"),
+        "kitchen remodel",
+        jobs_dir,
+    )
+    _write_job(
+        "bravo-kitchen",
+        _base_meta(client="bravo", trade="residential"),
+        "kitchen remodel",
+        jobs_dir,
+    )
+
+    result = get_comparable_jobs("acme", "residential", "kitchen remodel")
+    project_names = {r["project_name"] for r in result}
+    assert "acme-kitchen" in project_names
+    assert "bravo-kitchen" in project_names
+    # Same-client still ranks first via the +10 bonus.
+    assert result[0]["project_name"] == "acme-kitchen"
+
+
+def test_realized_margin_handles_zero_our_bid(patch_jobs_dir):
+    """Regression guard for a P3 crash: a historical record with our_bid=0
+    used to raise ZeroDivisionError inside format_comparables_for_prompt
+    because the guard checked actual_cost > 0 instead of our_bid > 0. The
+    wrapping try/except in tournament.py would then swallow the crash and
+    drop *all* comparables for that tournament. Must now format cleanly
+    with no margin line."""
+    jobs = [
+        {
+            "project_name": "legacy-record",
+            "date": "2025-01-01",
+            "trade": "residential",
+            "zip": "76801",
+            "our_bid": 0,
+            "estimate_total": 0,
+            "actual_cost": 1000,
+            "outcome": "won",
+            "similarity_score": 15.0,
+        }
+    ]
+    rendered = format_comparables_for_prompt(jobs)
+    assert "legacy-record" in rendered
+    assert "Actual cost: $1,000" in rendered
+    assert "Realized margin" not in rendered
+
+
+def test_realized_margin_handles_none_our_bid(patch_jobs_dir):
+    """Sibling guard: missing our_bid must also not break formatting."""
+    jobs = [
+        {
+            "project_name": "no-bid-record",
+            "date": "2025-01-01",
+            "trade": "residential",
+            "our_bid": None,
+            "actual_cost": 1000,
+            "outcome": "won",
+            "similarity_score": 15.0,
+        }
+    ]
+    rendered = format_comparables_for_prompt(jobs)
+    assert "no-bid-record" in rendered
+    assert "Realized margin" not in rendered

@@ -441,7 +441,12 @@ def get_accuracy_annotations(client_id: str) -> dict:
 
     per_agent: dict = {}
     for agent in ALL_AGENTS:
-        history = deviation_history.get(agent) or []
+        # Window to the same RED_FLAG_LOOKBACK the report path uses so the
+        # rerank annotation and `/api/verify/accuracy/{client}` report agree
+        # on legacy profiles that were written before update_calibration
+        # started truncating agent_deviation_history at write time.
+        full_history = deviation_history.get(agent) or []
+        history = full_history[-RED_FLAG_LOOKBACK:]
         count = len(history)
         if count > 0:
             avg_dev = round(sum(abs(d) for d in history) / count, 4)
