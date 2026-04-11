@@ -15,7 +15,11 @@ build/
 
 # Node
 node_modules/
-# frontend/dist/ is intentionally tracked — plain HTML/JS, no build step
+# frontend/dist/ is intentionally tracked — plain HTML/JS, no build step.
+# The `dist/` rule above (Python distutils) would otherwise catch it, so
+# explicitly un-ignore every path under frontend/dist/.
+!frontend/dist/
+!frontend/dist/**
 frontend/.vite/
 
 # Docker artifacts
