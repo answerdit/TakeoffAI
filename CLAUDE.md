@@ -224,6 +224,8 @@ Forgetting the `wm` patch in HTTP-layer tests will cause routes to read/write th
 | `WIKI_MODEL` | `claude-haiku-4-5` | Model for all wiki LLM synthesis |
 | `HARNESS_EVOLVER_MODEL` | `claude-sonnet-4-6` | Model used by harness evolver |
 | `HARNESS_EVOLVER_MAX_TOOL_CALLS` | `30` | Max tool calls per evolution run |
+| `TOURNAMENT_ACCURACY_RERANK_ENABLED` | `false` | Phase 2 of hybrid rollout: re-rank consensus entries by historical accuracy |
+| `TOURNAMENT_ACCURACY_RERANK_MIN_JOBS` | `5` | Minimum closed jobs before accuracy re-ranking activates for a client |
 | `DEFAULT_OVERHEAD_PCT` | `20.0` | Applied to estimates |
 | `DEFAULT_MARGIN_PCT` | `12.0` | Applied to estimates |
 | `GWS_ENABLED` | `false` | Enable Google Workspace integration via `gws` CLI |

@@ -170,6 +170,51 @@ def _collapse_to_consensus(results: list[AgentResult]) -> list[AgentResult]:
     return consensus
 
 
+def _maybe_rerank_by_accuracy(
+    consensus: list[AgentResult],
+    annotations: dict,
+    recommended_agent: Optional[str],
+) -> list[AgentResult]:
+    """
+    Optionally re-rank consensus entries by historical accuracy (hybrid rollout phase 2).
+
+    Guarded by settings.tournament_accuracy_rerank_enabled. Only kicks in when the
+    recommended agent has at least `tournament_accuracy_rerank_min_jobs` closed jobs.
+
+    Sort order (stable within each group):
+      1. Non-flagged agents with data, ascending by avg_deviation_pct
+      2. Agents with no deviation data
+      3. Red-flagged agents
+    """
+    if not settings.tournament_accuracy_rerank_enabled:
+        return consensus
+    if not recommended_agent or not annotations:
+        return consensus
+
+    rec_ann = annotations.get(recommended_agent) or {}
+    if rec_ann.get("closed_job_count", 0) < settings.tournament_accuracy_rerank_min_jobs:
+        return consensus
+
+    def sort_key(entry_with_index):
+        idx, entry = entry_with_index
+        ann = annotations.get(entry.agent_name) or {}
+        flagged = bool(ann.get("is_accuracy_flagged"))
+        dev = ann.get("avg_deviation_pct")
+        # Tier: 0 = non-flagged with data, 1 = no data, 2 = flagged
+        if flagged:
+            tier = 2
+        elif dev is None:
+            tier = 1
+        else:
+            tier = 0
+        # Sort by tier, then deviation (None → 0 placeholder; only used when tier>0), then original idx for stability
+        return (tier, dev if dev is not None else 0.0, idx)
+
+    indexed = list(enumerate(consensus))
+    indexed.sort(key=sort_key)
+    return [e for _, e in indexed]
+
+
 async def _save_tournament(
     db: aiosqlite.Connection,
     client_id: Optional[str],
@@ -377,6 +422,10 @@ async def run_tournament(
             import logging
 
             logging.exception("accuracy annotation load failed (non-fatal)")
+
+    consensus = _maybe_rerank_by_accuracy(
+        consensus, accuracy_annotations, accuracy_recommended_agent
+    )
 
     # Build a key set for marking consensus entries in the DB
     consensus_keys = {(e.agent_name, e.total_bid, e.temperature, e.sample_index) for e in consensus}

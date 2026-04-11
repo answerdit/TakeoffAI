@@ -4,7 +4,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.agents.tournament import AgentResult, TournamentResult, _collapse_to_consensus
+from backend.agents.tournament import (
+    AgentResult,
+    TournamentResult,
+    _collapse_to_consensus,
+    _maybe_rerank_by_accuracy,
+)
 
 
 def make_agent_result(name, total_bid, temperature=0.7, sample_index=0, error=None):
@@ -344,3 +349,94 @@ async def test_run_tournament_attaches_client_annotations(tmp_path, monkeypatch)
 
     # Consensus order must remain unchanged by annotation (hybrid rollout rule)
     assert len(result.consensus_entries) == 5
+
+
+# ── Hybrid rollout phase 2: feature-flagged re-ranking ──────────────────────
+
+
+def _sample_consensus():
+    return [
+        make_agent_result("conservative", 100_000.0),
+        make_agent_result("balanced", 105_000.0),
+        make_agent_result("aggressive", 110_000.0),
+        make_agent_result("historical_match", 115_000.0),
+        make_agent_result("market_beater", 120_000.0),
+    ]
+
+
+def _sample_annotations(balanced_jobs=5):
+    return {
+        "conservative": {
+            "avg_deviation_pct": 3.0,
+            "closed_job_count": 5,
+            "is_accuracy_flagged": False,
+        },
+        "balanced": {
+            "avg_deviation_pct": 0.5,
+            "closed_job_count": balanced_jobs,
+            "is_accuracy_flagged": False,
+        },
+        "aggressive": {
+            "avg_deviation_pct": 10.0,
+            "closed_job_count": 5,
+            "is_accuracy_flagged": True,
+        },
+        "historical_match": {
+            "avg_deviation_pct": None,
+            "closed_job_count": 0,
+            "is_accuracy_flagged": False,
+        },
+        "market_beater": {
+            "avg_deviation_pct": 4.0,
+            "closed_job_count": 5,
+            "is_accuracy_flagged": False,
+        },
+    }
+
+
+def test_rerank_disabled_by_default_preserves_order(monkeypatch):
+    import backend.config as cfg
+
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", False)
+    consensus = _sample_consensus()
+    out = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), "balanced")
+    assert [e.agent_name for e in out] == [e.agent_name for e in consensus]
+
+
+def test_rerank_enabled_but_too_few_jobs_preserves_order(monkeypatch):
+    import backend.config as cfg
+
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", True)
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_min_jobs", 5)
+    consensus = _sample_consensus()
+    out = _maybe_rerank_by_accuracy(consensus, _sample_annotations(balanced_jobs=2), "balanced")
+    assert [e.agent_name for e in out] == [e.agent_name for e in consensus]
+
+
+def test_rerank_enabled_sorts_by_deviation_flags_bottom(monkeypatch):
+    import backend.config as cfg
+
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", True)
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_min_jobs", 5)
+    consensus = _sample_consensus()
+    out = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), "balanced")
+    # Non-flagged with data, ascending: balanced(0.5) < conservative(3.0) < market_beater(4.0)
+    # Then no-data: historical_match
+    # Then flagged: aggressive
+    assert [e.agent_name for e in out] == [
+        "balanced",
+        "conservative",
+        "market_beater",
+        "historical_match",
+        "aggressive",
+    ]
+
+
+def test_rerank_no_recommended_agent_preserves_order(monkeypatch):
+    import backend.config as cfg
+
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", True)
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_min_jobs", 5)
+    consensus = _sample_consensus()
+    out = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), None)
+    assert [e.agent_name for e in out] == [e.agent_name for e in consensus]

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     wiki_model: str = "claude-haiku-4-5"
     db_path: str = str(_DATA_DIR / "takeoffai.db")
 
+    # ── Tournament accuracy re-ranking (hybrid rollout phase 2) ─────────────
+    tournament_accuracy_rerank_enabled: bool = False
+    tournament_accuracy_rerank_min_jobs: int = 5
+
     # ── Google Workspace (gws CLI) ──────────────────────────────────────────
     gws_enabled: bool = False
     gws_bin: str = "gws"  # override if gws is not on PATH
