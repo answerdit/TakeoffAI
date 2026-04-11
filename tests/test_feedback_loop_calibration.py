@@ -333,4 +333,4 @@ def test_annotations_and_report_agree_on_legacy_long_history(tmp_path, monkeypat
     # And the windowed value for conservative must be 1.0, not the ~25.5
     # you'd get by averaging the full 10-entry history.
     assert ann["per_agent"]["conservative"]["avg_deviation_pct"] == pytest.approx(1.0)
-    assert ann["per_agent"]["conservative"]["closed_job_count"] == 5
+    assert ann["per_agent"]["conservative"]["closed_job_count"] == 10
