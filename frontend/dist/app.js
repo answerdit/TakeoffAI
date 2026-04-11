@@ -422,6 +422,12 @@ function renderTournament(data) {
   document.getElementById('trn-title').textContent =
     `Tournament #${data.tournament_id} Results`;
 
+  // Rerank badge — visible when the backend actually sorted by accuracy
+  const rerankBadge = document.getElementById('trn-rerank-badge');
+  if (rerankBadge) {
+    rerankBadge.style.display = data.rerank_active ? 'inline-block' : 'none';
+  }
+
   // Agent cards
   const lowestBid = bids.length ? Math.min(...bids) : null;
   const grid = document.getElementById('trn-grid');
@@ -431,22 +437,67 @@ function renderTournament(data) {
     grid.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0">No consensus entries returned by the tournament.</div>';
   }
 
+  // If ANY entry carries accuracy data (or a flag), the annotation layer is
+  // live for this client — render meta lines for every card so agents without
+  // data read as "no history" rather than silently collapsing.
+  const hasAnyAccuracyData = entries.some(e =>
+    e.avg_deviation_pct != null
+    || (e.closed_job_count || 0) > 0
+    || e.is_accuracy_flagged === true
+  );
+
   entries.forEach(e => {
     const isLowest = lowestBid != null && e.total_bid === lowestBid;
     const conf     = (e.confidence || 'medium').toLowerCase();
-    const card     = document.createElement('div');
-    card.className = 'agent-card' + (isLowest ? ' lowest-bid' : '');
+    const flagged  = e.is_accuracy_flagged === true;
+
+    const card = document.createElement('div');
+    card.className = 'agent-card'
+      + (isLowest ? ' lowest-bid' : '')
+      + (flagged  ? ' flagged'    : '');
+
+    const metaHtml = hasAnyAccuracyData ? renderAccuracyMeta(e) : '';
+
     card.innerHTML = `
       <div class="agent-name">${esc(e.agent_name || '\u2014')}${isLowest ? ' \u2605' : ''}</div>
       <div class="agent-bid">${fmt$(e.total_bid)}</div>
       <span class="confidence-badge confidence-${esc(conf)}">
         ${esc(conf.charAt(0).toUpperCase() + conf.slice(1))}
       </span>
+      ${metaHtml}
     `;
     grid.appendChild(card);
   });
 
   trnResults.style.display = 'block';
+}
+
+/* ── Accuracy meta line (Phase 1 annotations) ──────────────────────── */
+
+function renderAccuracyMeta(entry) {
+  const dev    = entry.avg_deviation_pct;
+  const jobs   = entry.closed_job_count || 0;
+  const flagged = entry.is_accuracy_flagged === true;
+
+  const parts = [];
+
+  if (dev != null) {
+    parts.push(`<span>\u00b1${Number(dev).toFixed(1)}%</span>`);
+  } else {
+    parts.push('<span>no history</span>');
+  }
+
+  if (jobs > 0) {
+    parts.push('<span class="sep">\u2022</span>');
+    parts.push(`<span>${jobs} job${jobs === 1 ? '' : 's'}</span>`);
+  }
+
+  if (flagged) {
+    parts.push('<span class="sep">\u2022</span>');
+    parts.push('<span class="flag-pill" title="This agent has been flagged for historical inaccuracy">Flagged</span>');
+  }
+
+  return `<div class="accuracy-meta">${parts.join('')}</div>`;
 }
 
 /* ── HTML escape ───────────────────────────────────────────────────── */

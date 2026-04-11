@@ -668,6 +668,75 @@
 
   .agent-card.lowest-bid .agent-bid { color: var(--amber); }
 
+  /* ── Tournament accuracy re-ranking (hybrid rollout) ─────── */
+
+  .rerank-badge {
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 5px;
+    border: 1px solid rgba(16, 96, 255, 0.35);
+    color: var(--amber);
+    background: var(--amber-glow);
+    cursor: help;
+  }
+
+  .rerank-badge::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--amber);
+    margin-right: 6px;
+    vertical-align: middle;
+    box-shadow: 0 0 6px rgba(16, 96, 255, 0.6);
+  }
+
+  .accuracy-meta {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    letter-spacing: 0.01em;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    column-gap: 6px;
+    row-gap: 3px;
+  }
+
+  .accuracy-meta .sep {
+    opacity: 0.5;
+  }
+
+  .agent-card.flagged {
+    border-color: rgba(239, 68, 68, 0.45);
+    background: linear-gradient(
+      135deg,
+      var(--bg-card) 0%,
+      var(--bg-card) 70%,
+      rgba(239, 68, 68, 0.04) 100%
+    );
+  }
+
+  .agent-card.flagged .accuracy-meta {
+    color: var(--red);
+  }
+
+  .flag-pill {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.08);
+    color: var(--red);
+  }
+
   /* ── Voice mic button ──────────────────────────────────────── */
   .mic-label-row {
     display: flex;
