@@ -1,18 +1,20 @@
 import asyncio
 import json
-import pytest
 from pathlib import Path
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ── Trace persistence tests ────────────────────────────────────────────────────
+
 
 def test_trace_files_written_after_tournament(tmp_path, monkeypatch):
     """_save_entries writes one trace file per agent under data/traces/{tournament_id}/."""
     import aiosqlite
-    from backend.agents.tournament import _save_entries, AgentResult
-    from backend.api.main import _CREATE_TABLES
+
     import backend.agents.tournament as tm_mod
+    from backend.agents.tournament import AgentResult, _save_entries
+    from backend.api.main import _CREATE_TABLES
 
     traces_root = tmp_path / "data" / "traces"
     monkeypatch.setattr(tm_mod, "TRACES_DIR", traces_root)
@@ -39,7 +41,9 @@ def test_trace_files_written_after_tournament(tmp_path, monkeypatch):
         async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
             await db.executescript(_CREATE_TABLES)
             await _save_entries(
-                db, 42, results,
+                db,
+                42,
+                results,
                 client_id="test_client",
                 description="Replace roof on warehouse",
                 zip_code="76801",
@@ -66,9 +70,10 @@ def test_trace_files_written_after_tournament(tmp_path, monkeypatch):
 def test_trace_files_not_written_when_no_client_id(tmp_path, monkeypatch):
     """No trace files are written when client_id is None."""
     import aiosqlite
-    from backend.agents.tournament import _save_entries, AgentResult
-    from backend.api.main import _CREATE_TABLES
+
     import backend.agents.tournament as tm_mod
+    from backend.agents.tournament import AgentResult, _save_entries
+    from backend.api.main import _CREATE_TABLES
 
     traces_root = tmp_path / "data" / "traces"
     monkeypatch.setattr(tm_mod, "TRACES_DIR", traces_root)
@@ -96,9 +101,10 @@ def test_trace_files_not_written_when_no_client_id(tmp_path, monkeypatch):
 def test_trace_write_failure_does_not_break_tournament(tmp_path, monkeypatch):
     """If trace file write fails, the tournament entry is still saved to DB."""
     import aiosqlite
-    from backend.agents.tournament import _save_entries, AgentResult
-    from backend.api.main import _CREATE_TABLES
+
     import backend.agents.tournament as tm_mod
+    from backend.agents.tournament import AgentResult, _save_entries
+    from backend.api.main import _CREATE_TABLES
 
     monkeypatch.setattr(tm_mod, "DB_PATH", str(tmp_path / "test.db"))
 
@@ -121,8 +127,12 @@ def test_trace_write_failure_does_not_break_tournament(tmp_path, monkeypatch):
         async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
             await db.executescript(_CREATE_TABLES)
             await _save_entries(
-                db, 1, results,
-                client_id="c1", description="test", zip_code="76801",
+                db,
+                1,
+                results,
+                client_id="c1",
+                description="test",
+                zip_code="76801",
             )
             cursor = await db.execute("SELECT COUNT(*) FROM tournament_entries")
             row = await cursor.fetchone()
@@ -134,20 +144,29 @@ def test_trace_write_failure_does_not_break_tournament(tmp_path, monkeypatch):
 
 # ── Tool handler tests ─────────────────────────────────────────────────────────
 
+
 def test_list_traces_returns_files_for_client(tmp_path):
     """_handle_list_traces returns trace metadata for matching client_id."""
     import backend.agents.harness_evolver as ev
 
-    for tid, agent, cid in [(1, "aggressive", "client_a"), (1, "conservative", "client_a"), (2, "balanced", "client_b")]:
+    for tid, agent, cid in [
+        (1, "aggressive", "client_a"),
+        (1, "conservative", "client_a"),
+        (2, "balanced", "client_b"),
+    ]:
         d = tmp_path / str(tid)
         d.mkdir(parents=True, exist_ok=True)
-        (d / f"{agent}.json").write_text(json.dumps({
-            "tournament_id": tid,
-            "agent_name": agent,
-            "client_id": cid,
-            "timestamp": "2026-03-31T10:00:00+00:00",
-            "estimate": {"total_bid": 100000.0},
-        }))
+        (d / f"{agent}.json").write_text(
+            json.dumps(
+                {
+                    "tournament_id": tid,
+                    "agent_name": agent,
+                    "client_id": cid,
+                    "timestamp": "2026-03-31T10:00:00+00:00",
+                    "estimate": {"total_bid": 100000.0},
+                }
+            )
+        )
 
     results = asyncio.run(ev._handle_list_traces(tmp_path, client_id="client_a"))
     assert len(results) == 2
@@ -167,13 +186,17 @@ def test_list_traces_filters_by_agent_name(tmp_path):
     for agent in ["aggressive", "conservative", "balanced"]:
         d = tmp_path / "5"
         d.mkdir(parents=True, exist_ok=True)
-        (d / f"{agent}.json").write_text(json.dumps({
-            "tournament_id": 5,
-            "agent_name": agent,
-            "client_id": "c1",
-            "timestamp": "2026-03-31T10:00:00+00:00",
-            "estimate": {"total_bid": 50000.0},
-        }))
+        (d / f"{agent}.json").write_text(
+            json.dumps(
+                {
+                    "tournament_id": 5,
+                    "agent_name": agent,
+                    "client_id": "c1",
+                    "timestamp": "2026-03-31T10:00:00+00:00",
+                    "estimate": {"total_bid": 50000.0},
+                }
+            )
+        )
 
     results = asyncio.run(ev._handle_list_traces(tmp_path, client_id="c1", agent_name="aggressive"))
     assert len(results) == 1
@@ -187,13 +210,17 @@ def test_list_traces_respects_limit(tmp_path):
     for i in range(10):
         d = tmp_path / str(i)
         d.mkdir(parents=True, exist_ok=True)
-        (d / "aggressive.json").write_text(json.dumps({
-            "tournament_id": i,
-            "agent_name": "aggressive",
-            "client_id": "c1",
-            "timestamp": "2026-03-31T10:00:00+00:00",
-            "estimate": {"total_bid": float(i * 1000)},
-        }))
+        (d / "aggressive.json").write_text(
+            json.dumps(
+                {
+                    "tournament_id": i,
+                    "agent_name": "aggressive",
+                    "client_id": "c1",
+                    "timestamp": "2026-03-31T10:00:00+00:00",
+                    "estimate": {"total_bid": float(i * 1000)},
+                }
+            )
+        )
 
     results = asyncio.run(ev._handle_list_traces(tmp_path, client_id="c1", limit=3))
     assert len(results) == 3
@@ -231,6 +258,7 @@ def test_read_file_returns_error_for_missing_file(tmp_path):
 
 
 # ── Agentic loop tests ─────────────────────────────────────────────────────────
+
 
 @pytest.mark.anyio
 async def test_agentic_proposer_multi_turn_tool_loop(tmp_path, monkeypatch):
@@ -348,6 +376,7 @@ async def test_agentic_proposer_soft_cap_forces_proposal(tmp_path, monkeypatch):
 def test_evolve_harness_uses_agentic_proposer(tmp_path, monkeypatch):
     """evolve_harness calls _run_agentic_proposer and rewrites tournament.py."""
     import shutil
+
     import backend.agents.feedback_loop as fl
     import backend.agents.harness_evolver as ev
 
@@ -362,10 +391,15 @@ def test_evolve_harness_uses_agentic_proposer(tmp_path, monkeypatch):
         "stats": {
             "total_tournaments": 15,
             "win_rate_by_agent": {
-                "conservative": 0.07, "balanced": 0.07, "aggressive": 0.72,
-                "historical_match": 0.07, "market_beater": 0.07,
+                "conservative": 0.07,
+                "balanced": 0.07,
+                "aggressive": 0.72,
+                "historical_match": 0.07,
+                "market_beater": 0.07,
             },
-            "avg_winning_bid": 0.0, "avg_winning_margin": 0.0, "wins_by_agent": {},
+            "avg_winning_bid": 0.0,
+            "avg_winning_margin": 0.0,
+            "wins_by_agent": {},
         },
     }
     (tmp_path / "evo_client.json").write_text(json.dumps(profile))

@@ -5,7 +5,7 @@ Shared utilities for TakeoffAI agents.
 import asyncio
 import json
 
-from anthropic import AsyncAnthropic, RateLimitError, APIStatusError
+from anthropic import APIStatusError, AsyncAnthropic, RateLimitError
 
 
 def parse_llm_json(raw: str) -> dict:
@@ -91,14 +91,16 @@ async def call_with_json_retry(
 
         except RateLimitError:
             if attempt < max_retries:
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(2**attempt)
                 continue
             raise
 
         except APIStatusError as e:
             if e.status_code == 529 and attempt < max_retries:
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(2**attempt)
                 continue
             raise
 
-    raise ValueError(f"Failed to parse JSON after {1 + max_retries} attempts: {last_error}") from last_error
+    raise ValueError(
+        f"Failed to parse JSON after {1 + max_retries} attempts: {last_error}"
+    ) from last_error

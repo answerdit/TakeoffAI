@@ -37,6 +37,7 @@ def _validate_xlsx_content(content: bytes) -> None:
     if not content.startswith(b"\x50\x4b\x03\x04"):
         raise HTTPException(status_code=400, detail="Invalid file content")
 
+
 # ── Schema ────────────────────────────────────────────────────────────────────
 
 TEMPLATE_COLS = [
@@ -71,6 +72,7 @@ _SAMPLE_ROW = {
 
 
 # ── Row parser ────────────────────────────────────────────────────────────────
+
 
 def _parse_bid_row(raw: dict, row_num: int) -> tuple[Optional[dict], Optional[str]]:
     """
@@ -160,6 +162,7 @@ def _import_summary(client_id: str, bids: list[dict], errors: list[str]) -> dict
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+
 @upload_router.post("/bids/csv")
 async def upload_csv(
     file: UploadFile,
@@ -185,7 +188,9 @@ async def upload_csv(
 
     bids, errors = _process_dataframe(df)
     if not bids:
-        raise HTTPException(status_code=422, detail={"message": "No valid rows found", "errors": errors})
+        raise HTTPException(
+            status_code=422, detail={"message": "No valid rows found", "errors": errors}
+        )
 
     try:
         return _import_summary(client_id, bids, errors)
@@ -219,7 +224,9 @@ async def upload_excel(
 
     bids, errors = _process_dataframe(df)
     if not bids:
-        raise HTTPException(status_code=422, detail={"message": "No valid rows found", "errors": errors})
+        raise HTTPException(
+            status_code=422, detail={"message": "No valid rows found", "errors": errors}
+        )
 
     try:
         return _import_summary(client_id, bids, errors)
@@ -276,6 +283,7 @@ async def upload_manual(req: ManualUploadRequest):
 
 # ── Template downloads ────────────────────────────────────────────────────────
 
+
 @upload_router.get("/template/csv")
 async def template_csv():
     """Download a CSV template pre-filled with one sample row."""
@@ -306,6 +314,7 @@ async def template_excel():
 
 # ── Confirm import to client profile ─────────────────────────────────────────
 
+
 class ImportRequest(BaseModel):
     client_id: str = "default"
     records: list[dict]
@@ -316,6 +325,7 @@ async def import_bids(req: ImportRequest):
     """Persist parsed bid records into the client profile for tournament learning."""
     validate_client_id(req.client_id)
     from backend.agents.feedback_loop import update_client_profile_from_upload
+
     if not req.records:
         raise HTTPException(status_code=400, detail="No records provided.")
     try:

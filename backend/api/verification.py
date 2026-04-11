@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from backend.agents._db import _configure_conn
 from backend.agents.feedback_loop import get_agent_accuracy_report, record_actual_outcome
-from backend.agents.price_verifier import verify_line_items, _update_seed_csv
+from backend.agents.price_verifier import _update_seed_csv, verify_line_items
 from backend.api.validators import validate_client_id
 from backend.config import settings
 from backend.scheduler import run_verification_batch
@@ -25,6 +25,7 @@ verification_router = APIRouter()
 
 
 # ── Pydantic models ──────────────────────────────────────────────────────────
+
 
 class VerifyEstimateRequest(BaseModel):
     line_items: list[dict]
@@ -46,6 +47,7 @@ class QueueResolveRequest(BaseModel):
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
 
 @verification_router.post("/verify/estimate")
 async def verify_estimate(req: VerifyEstimateRequest):
@@ -165,9 +167,7 @@ async def resolve_queue_item(queue_id: int, req: QueueResolveRequest):
             )
             await db.commit()
 
-            async with db.execute(
-                "SELECT * FROM review_queue WHERE id = ?", (queue_id,)
-            ) as cur:
+            async with db.execute("SELECT * FROM review_queue WHERE id = ?", (queue_id,)) as cur:
                 row = dict(await cur.fetchone())
 
         # Update seed CSV if approved
@@ -224,6 +224,7 @@ async def get_accuracy(client_id: str):
     validate_client_id(client_id)
     try:
         import asyncio
+
         report = await asyncio.to_thread(get_agent_accuracy_report, client_id)
         return report
     except ValueError as exc:

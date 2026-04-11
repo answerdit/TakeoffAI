@@ -27,8 +27,8 @@ anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key or None)
 DB_PATH = settings.db_path
 CSV_PATH = Path(__file__).parent.parent / "data" / "material_costs.csv"
 
-DEVIATION_THRESHOLD_PCT = 5.0   # flag if abs deviation > 5%
-AGREEMENT_SPREAD_PCT = 10.0     # sources "agree" if within 10% of each other
+DEVIATION_THRESHOLD_PCT = 5.0  # flag if abs deviation > 5%
+AGREEMENT_SPREAD_PCT = 10.0  # sources "agree" if within 10% of each other
 MIN_SOURCES_FOR_AUTO_UPDATE = 3
 
 _HEADERS = {
@@ -42,7 +42,7 @@ _HEADERS = {
 
 _SUPPLIER_URLS = {
     "homedepot": "https://www.homedepot.com/s/{query}",
-    "lowes":     "https://www.lowes.com/search?searchTerm={query}",
+    "lowes": "https://www.lowes.com/search?searchTerm={query}",
 }
 
 
@@ -70,8 +70,8 @@ def _extract_price_candidates(html: str) -> str:
                 break
         return " | ".join(seen)
     # Fallback: strip tags, return first 800 chars of plain text
-    plain = re.sub(r'<[^>]+>', ' ', html)
-    plain = re.sub(r'\s+', ' ', plain).strip()
+    plain = re.sub(r"<[^>]+>", " ", html)
+    plain = re.sub(r"\s+", " ", plain).strip()
     return plain[:800]
 
 
@@ -92,7 +92,9 @@ async def _fetch_supplier_price(
     url = url_template.format(query=quote_plus(item))
 
     try:
-        async with httpx.AsyncClient(headers=_HEADERS, timeout=15.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            headers=_HEADERS, timeout=15.0, follow_redirects=True
+        ) as client:
             response = await client.get(url)
             if response.status_code != 200:
                 return None
@@ -112,13 +114,15 @@ async def _fetch_supplier_price(
                 "Return ONLY the numeric price as a decimal (e.g. '2.45'). "
                 "If no clear price is found, return exactly 'NO_PRICE'. No other text."
             ),
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Item: {item}\nUnit: {unit}\n\n"
-                    f"Price candidates from page:\n{price_context}"
-                ),
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Item: {item}\nUnit: {unit}\n\n"
+                        f"Price candidates from page:\n{price_context}"
+                    ),
+                }
+            ],
         )
         raw = msg.content[0].text.strip()
         if raw == "NO_PRICE":
@@ -139,7 +143,9 @@ async def _web_search_price(item: str, unit: str) -> list[float]:
     url = f"https://html.duckduckgo.com/html/?q={query}"
 
     try:
-        async with httpx.AsyncClient(headers=_HEADERS, timeout=15.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            headers=_HEADERS, timeout=15.0, follow_redirects=True
+        ) as client:
             response = await client.get(url)
             if response.status_code != 200:
                 return []
@@ -158,13 +164,15 @@ async def _web_search_price(item: str, unit: str) -> list[float]:
                 "Return ONLY a comma-separated list of decimals (e.g. '2.45,2.60,2.55'). "
                 "If no prices found, return 'NO_PRICE'. No other text."
             ),
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Item: {item}\nUnit: {unit}\n\n"
-                    f"Price candidates from page:\n{price_context}"
-                ),
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Item: {item}\nUnit: {unit}\n\n"
+                        f"Price candidates from page:\n{price_context}"
+                    ),
+                }
+            ],
         )
         raw = msg.content[0].text.strip()
         if raw == "NO_PRICE":
@@ -216,7 +224,11 @@ def _update_seed_csv(
 
     with csv_path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
-    fieldnames = list(rows[0].keys()) if rows else ["item", "unit", "low_cost", "high_cost", "trade_category"]
+    fieldnames = (
+        list(rows[0].keys())
+        if rows
+        else ["item", "unit", "low_cost", "high_cost", "trade_category"]
+    )
 
     updated = False
     for row in rows:
@@ -230,8 +242,7 @@ def _update_seed_csv(
 
     # Write atomically via temp file
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".csv", dir=csv_path.parent,
-        delete=False, newline="", encoding="utf-8"
+        mode="w", suffix=".csv", dir=csv_path.parent, delete=False, newline="", encoding="utf-8"
     ) as tmp:
         writer = csv.DictWriter(tmp, fieldnames=fieldnames)
         writer.writeheader()
@@ -260,7 +271,9 @@ async def _write_audit_record(
     verified_high = max(all_prices) if all_prices else None
     verified_mid = round(sum(all_prices) / len(all_prices), 4) if all_prices else None
     deviation_pct = _compute_deviation(ai_unit_cost, verified_mid) if verified_mid else None
-    flagged = 1 if (deviation_pct is not None and abs(deviation_pct) > DEVIATION_THRESHOLD_PCT) else 0
+    flagged = (
+        1 if (deviation_pct is not None and abs(deviation_pct) > DEVIATION_THRESHOLD_PCT) else 0
+    )
     sources_json = json.dumps(sources_meta)
 
     async with aiosqlite.connect(db_path) as db:
@@ -273,9 +286,20 @@ async def _write_audit_record(
                sources, source_count, flagged)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
             """,
-            (triggered_by, tournament_id, line_item, unit, ai_unit_cost,
-             verified_low, verified_high, verified_mid, deviation_pct,
-             sources_json, source_count, flagged),
+            (
+                triggered_by,
+                tournament_id,
+                line_item,
+                unit,
+                ai_unit_cost,
+                verified_low,
+                verified_high,
+                verified_mid,
+                deviation_pct,
+                sources_json,
+                source_count,
+                flagged,
+            ),
         ) as cur:
             audit_id = cur.lastrowid
         await db.commit()
@@ -288,8 +312,15 @@ async def _write_audit_record(
                    deviation_pct, sources)
                 VALUES (?,?,?,?,?,?,?)
                 """,
-                (audit_id, line_item, unit, ai_unit_cost, verified_mid,
-                 deviation_pct, sources_json),
+                (
+                    audit_id,
+                    line_item,
+                    unit,
+                    ai_unit_cost,
+                    verified_mid,
+                    deviation_pct,
+                    sources_json,
+                ),
             )
             await db.commit()
 
@@ -343,22 +374,26 @@ async def verify_line_items(
             price = await _fetch_supplier_price(description, unit, supplier)
             if price is not None:
                 all_prices.append(price)
-                sources_meta.append({
-                    "source": supplier,
-                    "price": price,
-                    "retrieved_at": retrieved_at,
-                })
+                sources_meta.append(
+                    {
+                        "source": supplier,
+                        "price": price,
+                        "retrieved_at": retrieved_at,
+                    }
+                )
 
         # Phase 2: Web search fallback if < 2 results from supplier lookup
         if len(all_prices) < 2:
             web_prices = await _web_search_price(description, unit)
             for p in web_prices[:3]:  # cap at 3 web results
                 all_prices.append(p)
-                sources_meta.append({
-                    "source": "web_search",
-                    "price": p,
-                    "retrieved_at": retrieved_at,
-                })
+                sources_meta.append(
+                    {
+                        "source": "web_search",
+                        "price": p,
+                        "retrieved_at": retrieved_at,
+                    }
+                )
 
         # Phase 3: Confidence decision
         auto_updated = 0
@@ -387,6 +422,7 @@ async def verify_line_items(
         # Persist auto_updated flag to DB
         if auto_updated:
             import aiosqlite
+
             async with aiosqlite.connect(DB_PATH) as db:
                 await _configure_conn(db)
                 await db.execute(

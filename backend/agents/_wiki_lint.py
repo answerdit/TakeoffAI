@@ -50,32 +50,43 @@ def lint() -> dict:
         required = _REQUIRED_FRONTMATTER.get(page_type, [])
         for field in required:
             if field not in meta:
-                frontmatter_errors.append({
-                    "page": rel,
-                    "error": f"missing required field: {field}",
-                })
+                frontmatter_errors.append(
+                    {
+                        "page": rel,
+                        "error": f"missing required field: {field}",
+                    }
+                )
 
         if page_type == "jobs":
             valid_statuses = {
-                "prospect", "estimated", "tournament-complete",
-                "bid-submitted", "won", "lost", "closed",
+                "prospect",
+                "estimated",
+                "tournament-complete",
+                "bid-submitted",
+                "won",
+                "lost",
+                "closed",
             }
             if meta.get("status") and meta["status"] not in valid_statuses:
-                frontmatter_errors.append({
-                    "page": rel,
-                    "error": f"invalid status: {meta['status']}",
-                })
+                frontmatter_errors.append(
+                    {
+                        "page": rel,
+                        "error": f"invalid status: {meta['status']}",
+                    }
+                )
 
             if meta.get("status") in _STALE_STATUSES and meta.get("date"):
                 try:
                     job_date = date.fromisoformat(str(meta["date"]))
                     days = (date.today() - job_date).days
                     if days > _STALE_DAYS:
-                        stale_jobs.append({
-                            "slug": path.stem,
-                            "status": meta["status"],
-                            "days_stale": days,
-                        })
+                        stale_jobs.append(
+                            {
+                                "slug": path.stem,
+                                "status": meta["status"],
+                                "days_stale": days,
+                            }
+                        )
                 except (ValueError, TypeError):
                     pass
 

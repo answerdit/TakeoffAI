@@ -1,8 +1,9 @@
 """Tests for wiki_manager — TakeoffAI LLM Wiki."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 import backend.agents._wiki_io as _io
 import backend.agents._wiki_llm as _llm
@@ -98,6 +99,7 @@ def test_slug_generation_special_chars():
 async def test_synthesize_calls_claude(tmp_path, monkeypatch):
     """_synthesize should call Claude with system + context + instruction and return text."""
     from backend.agents.wiki_manager import _synthesize
+
     monkeypatch.setattr(_llm, "_schema_cache", None)
     monkeypatch.setattr(_llm, "SCHEMA_PATH", tmp_path / "SCHEMA.md")
     (tmp_path / "SCHEMA.md").write_text("# Test Schema\nRule 1: be concise.")
@@ -131,6 +133,7 @@ async def test_synthesize_calls_claude(tmp_path, monkeypatch):
 async def test_synthesize_missing_schema(tmp_path, monkeypatch):
     """_synthesize should work even if SCHEMA.md is missing."""
     from backend.agents.wiki_manager import _synthesize
+
     monkeypatch.setattr(_llm, "_schema_cache", None)
     monkeypatch.setattr(_llm, "SCHEMA_PATH", tmp_path / "nonexistent.md")
 
@@ -149,11 +152,14 @@ async def test_synthesize_missing_schema(tmp_path, monkeypatch):
 async def test_create_job_writes_page(tmp_path, monkeypatch):
     """create_job should write a job page with prospect status and LLM scope."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
 
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="# Acme Parking Garage\n\n## Scope\nA 3-level precast parking structure.")]
+    mock_response.content = [
+        MagicMock(text="# Acme Parking Garage\n\n## Scope\nA 3-level precast parking structure.")
+    ]
     mock_client = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=mock_response)
     monkeypatch.setattr(_llm, "_anthropic", mock_client)
@@ -170,7 +176,7 @@ async def test_create_job_writes_page(tmp_path, monkeypatch):
     assert "job_slug" in result
 
     # Verify page was written
-    page_path = (tmp_path / "jobs" / f"{result['job_slug']}.md")
+    page_path = tmp_path / "jobs" / f"{result['job_slug']}.md"
     assert page_path.exists()
     meta, body = wm._parse_frontmatter(page_path)
     assert meta["status"] == "prospect"
@@ -179,9 +185,16 @@ async def test_create_job_writes_page(tmp_path, monkeypatch):
     assert "Scope" in body
 
     nullable_fields = [
-        "our_bid", "estimate_total", "estimate_low", "estimate_high",
-        "tournament_id", "winner_personality", "band_low", "band_high",
-        "actual_cost", "outcome_date",
+        "our_bid",
+        "estimate_total",
+        "estimate_low",
+        "estimate_high",
+        "tournament_id",
+        "winner_personality",
+        "band_low",
+        "band_high",
+        "actual_cost",
+        "outcome_date",
     ]
     for field in nullable_fields:
         assert field in meta
@@ -192,6 +205,7 @@ async def test_create_job_writes_page(tmp_path, monkeypatch):
 async def test_create_job_creates_client_page_if_missing(tmp_path, monkeypatch):
     """create_job should create a client page if one doesn't exist yet."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
 
@@ -220,14 +234,21 @@ async def test_create_job_creates_client_page_if_missing(tmp_path, monkeypatch):
 async def test_enrich_estimate_appends_section(tmp_path, monkeypatch):
     """enrich_estimate should append Estimate section and update status."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
 
     # Pre-create a prospect job page
     job_path = tmp_path / "jobs" / "2026-04-06-acme-garage.md"
-    wm._write_page(job_path, {"status": "prospect", "client": "acme"}, "# Garage\n\n## Scope\nBuild it.")
+    wm._write_page(
+        job_path, {"status": "prospect", "client": "acme"}, "# Garage\n\n## Scope\nBuild it."
+    )
 
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="## Estimate\nTotal bid $159K with high confidence. Key costs: concrete $43K, steel $98K.")]
+    mock_response.content = [
+        MagicMock(
+            text="## Estimate\nTotal bid $159K with high confidence. Key costs: concrete $43K, steel $98K."
+        )
+    ]
     mock_client = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=mock_response)
     monkeypatch.setattr(_llm, "_anthropic", mock_client)
@@ -254,6 +275,7 @@ async def test_enrich_estimate_appends_section(tmp_path, monkeypatch):
 async def test_enrich_estimate_noop_if_no_page(tmp_path, monkeypatch):
     """enrich_estimate should silently do nothing if the job page doesn't exist."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
 
     # No exception should be raised
@@ -264,13 +286,22 @@ async def test_enrich_estimate_noop_if_no_page(tmp_path, monkeypatch):
 async def test_enrich_tournament_appends_section(tmp_path, monkeypatch):
     """enrich_tournament should append Tournament section and update status."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
 
     job_path = tmp_path / "jobs" / "2026-04-06-acme-garage.md"
-    wm._write_page(job_path, {"status": "estimated", "client": "acme"}, "# Garage\n\n## Scope\nBuild it.\n\n## Estimate\nTotal $159K.")
+    wm._write_page(
+        job_path,
+        {"status": "estimated", "client": "acme"},
+        "# Garage\n\n## Scope\nBuild it.\n\n## Estimate\nTotal $159K.",
+    )
 
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="## Tournament\nFive agents bid. Band: $143K-$181K. Market Beater lowest at $151K.")]
+    mock_response.content = [
+        MagicMock(
+            text="## Tournament\nFive agents bid. Band: $143K-$181K. Market Beater lowest at $151K."
+        )
+    ]
     mock_client = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=mock_response)
     monkeypatch.setattr(_llm, "_anthropic", mock_client)
@@ -299,6 +330,7 @@ async def test_enrich_tournament_appends_section(tmp_path, monkeypatch):
 async def test_record_bid_decision(tmp_path, monkeypatch):
     """record_bid_decision should append Bid Decision section and set our_bid."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
 
     job_path = tmp_path / "jobs" / "2026-04-06-acme-garage.md"
@@ -309,12 +341,16 @@ async def test_record_bid_decision(tmp_path, monkeypatch):
     )
 
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="## Bid Decision\nGoing with $159K Balanced consensus.")]
+    mock_response.content = [
+        MagicMock(text="## Bid Decision\nGoing with $159K Balanced consensus.")
+    ]
     mock_client = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=mock_response)
     monkeypatch.setattr(_llm, "_anthropic", mock_client)
 
-    await wm.record_bid_decision("2026-04-06-acme-garage", our_bid=159880.0, notes="Balanced consensus")
+    await wm.record_bid_decision(
+        "2026-04-06-acme-garage", our_bid=159880.0, notes="Balanced consensus"
+    )
 
     meta, body = wm.read_page(job_path)
     assert meta["status"] == "bid-submitted"
@@ -326,6 +362,7 @@ async def test_record_bid_decision(tmp_path, monkeypatch):
 async def test_record_bid_decision_noop_if_no_page(tmp_path, monkeypatch):
     """record_bid_decision should silently do nothing if the job page doesn't exist."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     # No exception should be raised
     await wm.record_bid_decision("nonexistent-job", our_bid=50000.0)
@@ -335,6 +372,7 @@ async def test_record_bid_decision_noop_if_no_page(tmp_path, monkeypatch):
 async def test_cascade_outcome_updates_multiple_pages(tmp_path, monkeypatch):
     """cascade_outcome should update job, client, and personality pages."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
     monkeypatch.setattr(_io, "PERSONALITIES_DIR", tmp_path / "personalities")
@@ -345,8 +383,11 @@ async def test_cascade_outcome_updates_multiple_pages(tmp_path, monkeypatch):
     wm._write_page(
         job_path,
         {
-            "status": "bid-submitted", "client": "acme", "our_bid": 159880.0,
-            "tournament_id": 42, "winner_personality": "balanced",
+            "status": "bid-submitted",
+            "client": "acme",
+            "our_bid": 159880.0,
+            "tournament_id": 42,
+            "winner_personality": "balanced",
         },
         "# Garage\n\n## Scope\nBuild it.\n\n## Bid Decision\nGoing with Balanced.",
     )
@@ -377,6 +418,7 @@ async def test_cascade_outcome_updates_multiple_pages(tmp_path, monkeypatch):
     assert meta["status"] == "won"
     assert "Outcome" in body
     from datetime import date as _date
+
     assert meta["outcome_date"] == _date.today().isoformat()
 
     # Client page updated
@@ -392,6 +434,7 @@ async def test_cascade_outcome_updates_multiple_pages(tmp_path, monkeypatch):
 async def test_cascade_outcome_closed_with_actual_cost(tmp_path, monkeypatch):
     """cascade_outcome with status=closed should set actual_cost in frontmatter."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
     monkeypatch.setattr(_io, "PERSONALITIES_DIR", tmp_path / "personalities")
@@ -400,14 +443,26 @@ async def test_cascade_outcome_closed_with_actual_cost(tmp_path, monkeypatch):
     job_path = tmp_path / "jobs" / "2026-04-06-acme-garage.md"
     wm._write_page(
         job_path,
-        {"status": "won", "client": "acme", "our_bid": 159880.0, "tournament_id": 42, "winner_personality": "balanced"},
+        {
+            "status": "won",
+            "client": "acme",
+            "our_bid": 159880.0,
+            "tournament_id": 42,
+            "winner_personality": "balanced",
+        },
         "# Garage\n\n## Outcome\nWon.",
     )
     client_path = tmp_path / "clients" / "acme.md"
-    wm._write_page(client_path, {"client_id": "acme", "total_jobs": 1, "wins": 1, "losses": 0, "first_job": "2026-04-06"}, "# Acme")
+    wm._write_page(
+        client_path,
+        {"client_id": "acme", "total_jobs": 1, "wins": 1, "losses": 0, "first_job": "2026-04-06"},
+        "# Acme",
+    )
 
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="## Outcome\nClosed at $148K actual cost. 7.4% margin captured.")]
+    mock_response.content = [
+        MagicMock(text="## Outcome\nClosed at $148K actual cost. 7.4% margin captured.")
+    ]
     mock_client = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=mock_response)
     monkeypatch.setattr(_llm, "_anthropic", mock_client)
@@ -427,10 +482,13 @@ async def test_cascade_outcome_closed_with_actual_cost(tmp_path, monkeypatch):
 async def test_update_material_page_creates_new(tmp_path, monkeypatch):
     """update_material_page should create a new material page if one doesn't exist."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "MATERIALS_DIR", tmp_path / "materials")
 
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="# Concrete\n\n## Current Pricing\nVerified at $5.80/sqft.")]
+    mock_response.content = [
+        MagicMock(text="# Concrete\n\n## Current Pricing\nVerified at $5.80/sqft.")
+    ]
     mock_client = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=mock_response)
     monkeypatch.setattr(_llm, "_anthropic", mock_client)
@@ -456,12 +514,19 @@ async def test_update_material_page_creates_new(tmp_path, monkeypatch):
 async def test_update_material_page_updates_existing(tmp_path, monkeypatch):
     """update_material_page should update an existing material page."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "MATERIALS_DIR", tmp_path / "materials")
 
     page_path = tmp_path / "materials" / "concrete.md"
     wm._write_page(
         page_path,
-        {"material": "concrete", "category": "structural", "last_verified": "2026-04-01", "deviation_pct": 5.0, "verified_mid": 5.50},
+        {
+            "material": "concrete",
+            "category": "structural",
+            "last_verified": "2026-04-01",
+            "deviation_pct": 5.0,
+            "verified_mid": 5.50,
+        },
         "# Concrete\n\n## Current Pricing\nOld data.",
     )
 
@@ -484,14 +549,16 @@ async def test_update_material_page_updates_existing(tmp_path, monkeypatch):
     assert meta["deviation_pct"] == 12.07
     assert meta["verified_mid"] == 5.80
     from datetime import date as _date
+
     assert meta["last_verified"] == _date.today().isoformat()
-    assert meta["material"] == "concrete"   # existing field preserved
-    assert meta["category"] == "structural" # existing field preserved
+    assert meta["material"] == "concrete"  # existing field preserved
+    assert meta["category"] == "structural"  # existing field preserved
 
 
 def test_lint_finds_broken_links(tmp_path, monkeypatch):
     """lint should detect wikilinks to nonexistent pages."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
     monkeypatch.setattr(_io, "MATERIALS_DIR", tmp_path / "materials")
@@ -513,6 +580,7 @@ def test_lint_finds_broken_links(tmp_path, monkeypatch):
 def test_lint_finds_stale_jobs(tmp_path, monkeypatch):
     """lint should flag jobs stuck in estimated for >30 days."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
     monkeypatch.setattr(_io, "MATERIALS_DIR", tmp_path / "materials")
@@ -533,6 +601,7 @@ def test_lint_finds_stale_jobs(tmp_path, monkeypatch):
 def test_lint_validates_frontmatter(tmp_path, monkeypatch):
     """lint should flag missing required frontmatter fields."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
     monkeypatch.setattr(_io, "MATERIALS_DIR", tmp_path / "materials")
@@ -549,6 +618,7 @@ def test_lint_validates_frontmatter(tmp_path, monkeypatch):
 def test_seed_personality_page(tmp_path, monkeypatch):
     """_seed_personality_page should create a page from PERSONALITY_PROMPTS."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "PERSONALITIES_DIR", tmp_path / "personalities")
 
     wm._seed_personality_page("conservative")
@@ -567,6 +637,7 @@ def test_seed_personality_page(tmp_path, monkeypatch):
 async def test_full_job_lifecycle(tmp_path, monkeypatch):
     """End-to-end: prospect → estimated → tournament-complete → bid-submitted → won → closed."""
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
     monkeypatch.setattr(_io, "PERSONALITIES_DIR", tmp_path / "personalities")
@@ -592,26 +663,32 @@ async def test_full_job_lifecycle(tmp_path, monkeypatch):
     assert meta["status"] == "prospect"
 
     # 2. Enrich with estimate
-    await wm.enrich_estimate(slug, {
-        "total_bid": 150000.0,
-        "estimate_low": 135000.0,
-        "estimate_high": 165000.0,
-        "confidence": "high",
-        "line_items": [],
-    })
+    await wm.enrich_estimate(
+        slug,
+        {
+            "total_bid": 150000.0,
+            "estimate_low": 135000.0,
+            "estimate_high": 165000.0,
+            "confidence": "high",
+            "line_items": [],
+        },
+    )
     meta, _ = wm.read_page(tmp_path / "jobs" / f"{slug}.md")
     assert meta["status"] == "estimated"
     assert meta["estimate_total"] == 150000.0
 
     # 3. Enrich with tournament
-    await wm.enrich_tournament(slug, {
-        "tournament_id": 99,
-        "consensus_entries": [
-            {"agent_name": "conservative", "total_bid": 170000, "confidence": "high"},
-            {"agent_name": "balanced", "total_bid": 150000, "confidence": "high"},
-            {"agent_name": "aggressive", "total_bid": 135000, "confidence": "medium"},
-        ],
-    })
+    await wm.enrich_tournament(
+        slug,
+        {
+            "tournament_id": 99,
+            "consensus_entries": [
+                {"agent_name": "conservative", "total_bid": 170000, "confidence": "high"},
+                {"agent_name": "balanced", "total_bid": 150000, "confidence": "high"},
+                {"agent_name": "aggressive", "total_bid": 135000, "confidence": "medium"},
+            ],
+        },
+    )
     meta, _ = wm.read_page(tmp_path / "jobs" / f"{slug}.md")
     assert meta["status"] == "tournament-complete"
     assert meta["tournament_id"] == 99

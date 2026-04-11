@@ -1,13 +1,14 @@
 """Tests for backend/agents/utils.py"""
 
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from backend.agents.utils import parse_llm_json, call_with_json_retry
+import pytest
 
+from backend.agents.utils import call_with_json_retry, parse_llm_json
 
 # ── parse_llm_json ────────────────────────────────────────────────────────────
+
 
 def test_parse_llm_json_plain():
     raw = '{"total_bid": 12345.0}'
@@ -31,12 +32,13 @@ def test_parse_llm_json_raises_on_bad_json():
 
 # ── call_with_json_retry ──────────────────────────────────────────────────────
 
+
 def _make_client(responses: list[str]) -> MagicMock:
     """Build a mock AsyncAnthropic client that returns each string in sequence."""
     client = MagicMock()
-    client.messages.create = AsyncMock(side_effect=[
-        MagicMock(content=[MagicMock(text=r)]) for r in responses
-    ])
+    client.messages.create = AsyncMock(
+        side_effect=[MagicMock(content=[MagicMock(text=r)]) for r in responses]
+    )
     return client
 
 

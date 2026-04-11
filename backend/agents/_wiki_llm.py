@@ -60,9 +60,11 @@ async def _synthesize(context: str, instruction: str) -> str:
         model=WIKI_MODEL,
         max_tokens=2048,
         system=system,
-        messages=[{
-            "role": "user",
-            "content": f"Context:\n{context}\n\nInstruction:\n{instruction}",
-        }],
+        messages=[
+            {
+                "role": "user",
+                "content": f"Context:\n{context}\n\nInstruction:\n{instruction}",
+            }
+        ],
     )
     return response.content[0].text.strip()

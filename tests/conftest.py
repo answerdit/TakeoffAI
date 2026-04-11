@@ -1,8 +1,9 @@
 """Shared pytest fixtures for TakeoffAI tests."""
 
 import os
+
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from backend.api.main import app
 

@@ -124,7 +124,9 @@ async def enrich_estimate(job_slug: str, estimate_data: dict) -> None:
         meta["estimate_low"] = estimate_data.get("estimate_low")
         meta["estimate_high"] = estimate_data.get("estimate_high")
         tags = meta.get("tags", ["job"])
-        meta["tags"] = ["job", "estimated"] + [t for t in tags if t not in ("job", "prospect", "estimated")]
+        meta["tags"] = ["job", "estimated"] + [
+            t for t in tags if t not in ("job", "prospect", "estimated")
+        ]
 
         section = await _llm._synthesize(
             context=(
@@ -211,9 +213,7 @@ async def record_bid_decision(job_slug: str, our_bid: float, notes: str = "") ->
 
         section = await _llm._synthesize(
             context=(
-                f"Existing page:\n{body}\n\n"
-                f"Bid decision: ${our_bid:,.2f}\n"
-                f"Notes: {notes}"
+                f"Existing page:\n{body}\n\n" f"Bid decision: ${our_bid:,.2f}\n" f"Notes: {notes}"
             ),
             instruction=(
                 "Write a ## Bid Decision section. Summarize:\n"

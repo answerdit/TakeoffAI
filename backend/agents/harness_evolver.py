@@ -83,7 +83,9 @@ def check_dominance(client_id: str) -> bool:
 def _git_commit(repo_root: Path, tournament_py: Path, commit_msg: str) -> str | None:
     try:
         subprocess.run(["git", "add", str(tournament_py)], cwd=repo_root, check=True)
-        subprocess.run(["git", "commit", str(tournament_py), "-m", commit_msg], cwd=repo_root, check=True)
+        subprocess.run(
+            ["git", "commit", str(tournament_py), "-m", commit_msg], cwd=repo_root, check=True
+        )
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
@@ -157,13 +159,15 @@ async def _handle_list_traces(
             meta = json.loads(await asyncio.to_thread(f.read_text))
             if meta.get("client_id") != client_id:
                 continue
-            results.append({
-                "path": str(f.relative_to(data_dir)),
-                "agent_name": meta.get("agent_name"),
-                "tournament_id": meta.get("tournament_id"),
-                "total_bid": meta.get("estimate", {}).get("total_bid"),
-                "timestamp": meta.get("timestamp"),
-            })
+            results.append(
+                {
+                    "path": str(f.relative_to(data_dir)),
+                    "agent_name": meta.get("agent_name"),
+                    "tournament_id": meta.get("tournament_id"),
+                    "total_bid": meta.get("estimate", {}).get("total_bid"),
+                    "timestamp": meta.get("timestamp"),
+                }
+            )
             if len(results) >= limit:
                 break
         except Exception:
@@ -227,6 +231,7 @@ async def _run_agentic_proposer(
     )
 
     from backend.config import settings as _settings
+
     client = anthropic.AsyncAnthropic(api_key=_settings.anthropic_api_key or None)
     messages: list[dict] = [{"role": "user", "content": initial_message}]
     forced = False
@@ -266,28 +271,30 @@ async def _run_agentic_proposer(
                     else:
                         result = {"error": f"Unknown tool: {block.name}"}
 
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result),
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps(result),
+                        }
+                    )
 
             messages.append({"role": "user", "content": tool_results})
 
             if tool_call_count >= HARNESS_EVOLVER_MAX_TOOL_CALLS:
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        "You have enough context. "
-                        "Output your proposed prompts now as a JSON object."
-                    ),
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "You have enough context. "
+                            "Output your proposed prompts now as a JSON object."
+                        ),
+                    }
+                )
                 forced = True
 
         else:
-            raise ValueError(
-                f"Agentic proposer: unexpected stop_reason '{response.stop_reason}'"
-            )
+            raise ValueError(f"Agentic proposer: unexpected stop_reason '{response.stop_reason}'")
 
 
 async def evolve_harness(client_id: str, dry_run: bool = False) -> dict:
@@ -306,7 +313,7 @@ async def evolve_harness(client_id: str, dry_run: bool = False) -> dict:
         return {"status": "locked"}
 
     async with lock:
-        from backend.agents.feedback_loop import _profile_path, ALL_AGENTS
+        from backend.agents.feedback_loop import ALL_AGENTS, _profile_path
 
         path = _profile_path(client_id)
         if not path.exists():
@@ -335,6 +342,7 @@ async def evolve_harness(client_id: str, dry_run: bool = False) -> dict:
 
         # ── Call Claude (agentic loop) ────────────────────────────────────────
         from backend.agents.feedback_loop import _profile_path as _fp
+
         data_dir = TOURNAMENT_PY.parent.parent / "data"
         raw = await _run_agentic_proposer(
             data_dir=data_dir,
@@ -357,9 +365,7 @@ async def evolve_harness(client_id: str, dry_run: bool = False) -> dict:
 
         # Only apply keys that are valid underperforming agents
         valid_proposed = {
-            k: v
-            for k, v in proposed.items()
-            if k in ALL_AGENTS and k != dominant_agent
+            k: v for k, v in proposed.items() if k in ALL_AGENTS and k != dominant_agent
         }
         if not valid_proposed:
             raise ValueError(f"Claude returned no valid agent keys: {list(proposed.keys())}")
@@ -372,12 +378,14 @@ async def evolve_harness(client_id: str, dry_run: bool = False) -> dict:
 
         if dry_run:
             # Compute unified diff without touching the filesystem or git.
-            diff_lines = list(difflib.unified_diff(
-                original_source.splitlines(keepends=True),
-                new_source.splitlines(keepends=True),
-                fromfile="tournament.py (current)",
-                tofile="tournament.py (proposed)",
-            ))
+            diff_lines = list(
+                difflib.unified_diff(
+                    original_source.splitlines(keepends=True),
+                    new_source.splitlines(keepends=True),
+                    fromfile="tournament.py (current)",
+                    tofile="tournament.py (proposed)",
+                )
+            )
             return {
                 "status": "dry_run",
                 "evolved_agents": list(valid_proposed.keys()),

@@ -1,10 +1,10 @@
 """Tests for BidToWin agent — mock LLM, verify async behavior and JSON parsing."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
-from backend.agents.bid_to_win import run_bid_to_win
+import pytest
 
+from backend.agents.bid_to_win import run_bid_to_win
 
 _MOCK_RESPONSE = {
     "rfp_analysis": {
@@ -17,9 +17,27 @@ _MOCK_RESPONSE = {
     "scope_gaps": [],
     "competitor_range": {"low": 120000, "mid": 135000, "high": 150000},
     "bid_scenarios": [
-        {"name": "Conservative", "bid_price": 145000, "markup_over_cost": 18.0, "win_probability": 0.35, "notes": "Safe"},
-        {"name": "Balanced", "bid_price": 138000, "markup_over_cost": 12.0, "win_probability": 0.55, "notes": "Mid"},
-        {"name": "Aggressive", "bid_price": 128000, "markup_over_cost": 5.0, "win_probability": 0.75, "notes": "Lean"},
+        {
+            "name": "Conservative",
+            "bid_price": 145000,
+            "markup_over_cost": 18.0,
+            "win_probability": 0.35,
+            "notes": "Safe",
+        },
+        {
+            "name": "Balanced",
+            "bid_price": 138000,
+            "markup_over_cost": 12.0,
+            "win_probability": 0.55,
+            "notes": "Mid",
+        },
+        {
+            "name": "Aggressive",
+            "bid_price": 128000,
+            "markup_over_cost": 5.0,
+            "win_probability": 0.75,
+            "notes": "Lean",
+        },
     ],
     "recommended_scenario": "Balanced",
     "proposal_narrative": "We propose a competitive bid...",

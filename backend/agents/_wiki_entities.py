@@ -92,8 +92,7 @@ def _seed_personality_page(personality: str) -> None:
     display_name = personality.replace("_", " ").title()
 
     callout_lines = "\n".join(
-        f"> {line}" if line.strip() else ">"
-        for line in prompt_text.strip().splitlines()
+        f"> {line}" if line.strip() else ">" for line in prompt_text.strip().splitlines()
     )
     callout = f"> [!abstract] Bidding Strategy\n{callout_lines}"
 
@@ -201,8 +200,7 @@ async def update_material_page(
         }
         updated_body = await _llm._synthesize(
             context=(
-                f"Current page:\n{body}\n\n"
-                f"New verification data:\n{json.dumps(context_data)}"
+                f"Current page:\n{body}\n\n" f"New verification data:\n{json.dumps(context_data)}"
             ),
             instruction=(
                 "Write or update this material page. Include:\n"

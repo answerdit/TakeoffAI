@@ -23,6 +23,7 @@ def _log_task_err(t: asyncio.Task) -> None:
     if not t.cancelled() and t.exception():
         _log.error("background task failed: %s", t.exception(), exc_info=t.exception())
 
+
 DB_PATH = settings.db_path
 AUTO_MODE_MIN_TOURNAMENTS = 20
 
@@ -36,13 +37,16 @@ class JudgeMode(str, Enum):
 def _load_profile_sync(client_id: str) -> dict:
     """Load client profile synchronously (called via asyncio.to_thread)."""
     from backend.agents.feedback_loop import _profile_path
+
     path = _profile_path(client_id)
     if path.exists():
         return json.loads(path.read_text())
     return {}
 
 
-def _score_by_proximity(entries: list[dict], actual_winning_bid: float) -> tuple[int, dict[int, float]]:
+def _score_by_proximity(
+    entries: list[dict], actual_winning_bid: float
+) -> tuple[int, dict[int, float]]:
     """
     Score each entry by proximity to actual_winning_bid.
     Winner = closest; scores normalized 0–100 across the entry range.
@@ -55,14 +59,13 @@ def _score_by_proximity(entries: list[dict], actual_winning_bid: float) -> tuple
     max_d = max(distances.values())
     span = max_d - min_d or 1.0
 
-    scores = {
-        eid: round(100.0 * (1.0 - (d - min_d) / span), 2)
-        for eid, d in distances.items()
-    }
+    scores = {eid: round(100.0 * (1.0 - (d - min_d) / span), 2) for eid, d in distances.items()}
     return winner_id, scores
 
 
-def _score_by_win_rate(entries: list[dict], win_rates: dict[str, float]) -> tuple[int, dict[int, float]]:
+def _score_by_win_rate(
+    entries: list[dict], win_rates: dict[str, float]
+) -> tuple[int, dict[int, float]]:
     """
     Score each entry using historical win-rate for its agent personality.
     Winner = highest historical win rate.
@@ -126,7 +129,9 @@ async def judge_tournament(
         if mode == JudgeMode.HUMAN:
             matched = [e for e in entries if e["agent_name"] == winner_agent_name]
             if not matched:
-                raise ValueError(f"Agent '{winner_agent_name}' not found in tournament {tournament_id}")
+                raise ValueError(
+                    f"Agent '{winner_agent_name}' not found in tournament {tournament_id}"
+                )
             winner_id = matched[0]["id"]
             scores = {e["id"]: (100.0 if e["id"] == winner_id else 0.0) for e in entries}
 
@@ -171,11 +176,13 @@ async def judge_tournament(
     # ── Trigger feedback loop outside DB context ──────────────────────────────
     if client_id and winner_entry:
         from backend.agents.feedback_loop import update_client_profile
+
         await asyncio.to_thread(update_client_profile, client_id, winner_entry)
 
     # ── Auto-evolve harness if one agent is dominating ────────────────────────
     if client_id and winner_entry:
         from backend.agents.harness_evolver import check_dominance, evolve_harness
+
         if check_dominance(client_id):
             _t = asyncio.create_task(evolve_harness(client_id))
             _t.add_done_callback(_log_task_err)

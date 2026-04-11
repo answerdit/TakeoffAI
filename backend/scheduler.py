@@ -58,6 +58,7 @@ async def run_verification_batch(triggered_by: str = "on_demand") -> dict:
     # Log flagged items to Google Sheet (no-op if GWS_ENABLED is False)
     try:
         from backend.agents._workspace import log_price_audit_to_sheet
+
         await log_price_audit_to_sheet(records)
     except Exception:
         logger.exception("log_price_audit_to_sheet failed (non-fatal)")
@@ -81,7 +82,10 @@ async def _run_nightly_verification() -> None:
         result = await run_verification_batch(triggered_by="nightly")
         logger.info(
             "Nightly verification: %s items checked | %s flagged | %s auto-updated | %.1fs",
-            result["items_checked"], result["flagged"], result["auto_updated"], result["duration_seconds"],
+            result["items_checked"],
+            result["flagged"],
+            result["auto_updated"],
+            result["duration_seconds"],
         )
     except Exception as exc:
         logger.error("Nightly verification failed: %s", exc, exc_info=True)

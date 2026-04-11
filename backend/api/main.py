@@ -158,7 +158,8 @@ if _app_env != "development" and not _raw_origins:
     raise RuntimeError("ALLOWED_ORIGINS env var is required in non-development mode")
 
 ALLOWED_ORIGINS = (
-    _raw_origins.split(",") if _raw_origins
+    _raw_origins.split(",")
+    if _raw_origins
     # "null" is the Origin header browsers send for file:// pages; required for
     # the dev workflow where index.html is opened directly without a local server.
     else ["http://localhost:3000", "http://localhost:5173", "null"]
@@ -184,6 +185,7 @@ app.include_router(wiki_router, prefix="/api", dependencies=[Depends(verify_api_
 @app.get("/api/health")
 async def health():
     from backend.config import settings
+
     if not settings.anthropic_api_key or settings.anthropic_api_key == "sk-ant-your-key-here":
         return {"status": "degraded", "product": "TakeoffAI", "company": "answerd.it"}
     return {"status": "ok", "product": "TakeoffAI", "company": "answerd.it"}

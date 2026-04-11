@@ -21,6 +21,7 @@ wiki_router = APIRouter()
 
 # ── Request models ───────────────────────────────────────────────────────────
 
+
 class JobCreateRequest(BaseModel):
     client_id: str = Field(..., min_length=1, description="Client identifier")
     project_name: str = Field(..., min_length=3, description="Human-readable project name")
@@ -32,12 +33,17 @@ class JobCreateRequest(BaseModel):
 class JobUpdateRequest(BaseModel):
     job_slug: str = Field(..., min_length=1, description="Job slug from create response")
     status: str = Field(..., description="New status: bid-submitted, won, lost, or closed")
-    our_bid: Optional[float] = Field(default=None, ge=0, description="Bid amount (required for bid-submitted)")
-    actual_cost: Optional[float] = Field(default=None, ge=0, description="Actual cost (required for closed)")
+    our_bid: Optional[float] = Field(
+        default=None, ge=0, description="Bid amount (required for bid-submitted)"
+    )
+    actual_cost: Optional[float] = Field(
+        default=None, ge=0, description="Actual cost (required for closed)"
+    )
     notes: Optional[str] = Field(default="", description="Optional notes")
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
 
 @wiki_router.post("/job/create")
 @limiter.limit("10/minute")
@@ -145,9 +151,11 @@ async def jobs_list(status: Optional[str] = None):
 
 # ── Workspace fire-and-forget helpers ────────────────────────────────────────
 
+
 async def _ws_notify_job_created(job_slug: str, req: JobCreateRequest) -> None:
     try:
         from backend.agents._workspace import notify_job_created
+
         await notify_job_created(
             job_slug=job_slug,
             client_id=req.client_id,
@@ -163,6 +171,7 @@ async def _ws_notify_job_created(job_slug: str, req: JobCreateRequest) -> None:
 async def _ws_notify_bid_submitted(req: JobUpdateRequest) -> None:
     try:
         from backend.agents._workspace import notify_bid_submitted
+
         meta, _ = wiki_manager.read_page(wiki_manager.JOBS_DIR / f"{req.job_slug}.md")
         await notify_bid_submitted(
             job_slug=req.job_slug,
@@ -176,6 +185,7 @@ async def _ws_notify_bid_submitted(req: JobUpdateRequest) -> None:
 async def _ws_notify_outcome(req: JobUpdateRequest) -> None:
     try:
         from backend.agents._workspace import notify_outcome
+
         meta, _ = wiki_manager.read_page(wiki_manager.JOBS_DIR / f"{req.job_slug}.md")
         await notify_outcome(
             job_slug=req.job_slug,

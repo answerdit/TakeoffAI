@@ -2,6 +2,7 @@ import json
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 
@@ -23,6 +24,7 @@ async def test_fetch_supplier_price_returns_float_on_success():
                 return_value=mock_http_response
             )
             from backend.agents.price_verifier import _fetch_supplier_price
+
             result = await _fetch_supplier_price("Framing Lumber (2x4x8)", "LF", "homedepot")
     assert isinstance(result, float)
     assert result == 2.45
@@ -36,6 +38,7 @@ async def test_fetch_supplier_price_returns_none_on_http_error():
             side_effect=Exception("connection refused")
         )
         from backend.agents.price_verifier import _fetch_supplier_price
+
         result = await _fetch_supplier_price("Framing Lumber (2x4x8)", "LF", "homedepot")
     assert result is None
 
@@ -58,6 +61,7 @@ async def test_fetch_supplier_price_returns_none_when_claude_returns_no_price():
                 return_value=mock_http_response
             )
             from backend.agents.price_verifier import _fetch_supplier_price
+
             result = await _fetch_supplier_price("Unobtainium Beam", "EA", "homedepot")
     assert result is None
 
@@ -80,6 +84,7 @@ async def test_web_search_fallback_returns_prices():
                 return_value=mock_http_response
             )
             from backend.agents.price_verifier import _web_search_price
+
             prices = await _web_search_price("Framing Lumber (2x4x8)", "LF")
     assert isinstance(prices, list)
     assert all(isinstance(p, float) for p in prices)
@@ -88,6 +93,7 @@ async def test_web_search_fallback_returns_prices():
 def test_compute_deviation():
     """deviation_pct = (ai - mid) / mid * 100."""
     from backend.agents.price_verifier import _compute_deviation
+
     assert _compute_deviation(ai=1.10, verified_mid=1.00) == pytest.approx(10.0)
     assert _compute_deviation(ai=0.90, verified_mid=1.00) == pytest.approx(-10.0)
     assert _compute_deviation(ai=1.00, verified_mid=1.00) == pytest.approx(0.0)
@@ -95,17 +101,20 @@ def test_compute_deviation():
 
 def test_sources_agree_true():
     from backend.agents.price_verifier import _sources_agree
-    assert _sources_agree([1.00, 1.05, 1.08]) is True   # max spread < 10%
+
+    assert _sources_agree([1.00, 1.05, 1.08]) is True  # max spread < 10%
 
 
 def test_sources_agree_false():
     from backend.agents.price_verifier import _sources_agree
-    assert _sources_agree([1.00, 1.50, 2.00]) is False   # spread > 10%
+
+    assert _sources_agree([1.00, 1.50, 2.00]) is False  # spread > 10%
 
 
 def test_update_seed_csv(tmp_path):
     """_update_seed_csv rewrites the matching row in material_costs.csv."""
     import csv
+
     csv_path = tmp_path / "material_costs.csv"
     csv_path.write_text(
         "item,unit,low_cost,high_cost,trade_category\n"
@@ -114,6 +123,7 @@ def test_update_seed_csv(tmp_path):
     )
 
     from backend.agents.price_verifier import _update_seed_csv
+
     updated = _update_seed_csv(
         item="Framing Lumber (2x4x8)",
         new_low=0.55,
@@ -137,23 +147,31 @@ async def test_verify_line_items_writes_audit_record(tmp_path):
 
     db_path = str(tmp_path / "test.db")
     from backend.api.main import _CREATE_TABLES
+
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(_CREATE_TABLES)
         await db.commit()
 
-    line_items = [{
-        "description": "Framing Lumber (2x4x8)",
-        "unit": "LF",
-        "unit_material_cost": 0.60,
-        "unit_labor_cost": 0.20,
-        "quantity": 1000,
-        "subtotal": 800.0,
-    }]
+    line_items = [
+        {
+            "description": "Framing Lumber (2x4x8)",
+            "unit": "LF",
+            "unit_material_cost": 0.60,
+            "unit_labor_cost": 0.20,
+            "quantity": 1000,
+            "subtotal": 800.0,
+        }
+    ]
 
     with patch("backend.agents.price_verifier.DB_PATH", db_path):
-        with patch("backend.agents.price_verifier._fetch_supplier_price", AsyncMock(return_value=0.65)):
-            with patch("backend.agents.price_verifier._web_search_price", AsyncMock(return_value=[])):
+        with patch(
+            "backend.agents.price_verifier._fetch_supplier_price", AsyncMock(return_value=0.65)
+        ):
+            with patch(
+                "backend.agents.price_verifier._web_search_price", AsyncMock(return_value=[])
+            ):
                 from backend.agents.price_verifier import verify_line_items
+
                 records = await verify_line_items(line_items, triggered_by="on_demand")
 
     assert len(records) == 1
@@ -173,26 +191,33 @@ async def test_verify_line_items_flags_deviation_over_5_pct(tmp_path):
 
     db_path = str(tmp_path / "test.db")
     from backend.api.main import _CREATE_TABLES
+
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(_CREATE_TABLES)
         await db.commit()
 
     # AI said $0.60, web says $1.00 → deviation = -40% → flagged
-    line_items = [{
-        "description": "Framing Lumber (2x4x8)",
-        "unit": "LF",
-        "unit_material_cost": 0.60,
-        "unit_labor_cost": 0.20,
-        "quantity": 1000,
-        "subtotal": 800.0,
-    }]
+    line_items = [
+        {
+            "description": "Framing Lumber (2x4x8)",
+            "unit": "LF",
+            "unit_material_cost": 0.60,
+            "unit_labor_cost": 0.20,
+            "quantity": 1000,
+            "subtotal": 800.0,
+        }
+    ]
 
     with patch("backend.agents.price_verifier.DB_PATH", db_path):
-        with patch("backend.agents.price_verifier._fetch_supplier_price",
-                   AsyncMock(side_effect=[1.00, 1.02])):  # 2 supplier hits
-            with patch("backend.agents.price_verifier._web_search_price",
-                       AsyncMock(return_value=[0.99])):  # 1 web hit → 3 total, agree
+        with patch(
+            "backend.agents.price_verifier._fetch_supplier_price",
+            AsyncMock(side_effect=[1.00, 1.02]),
+        ):  # 2 supplier hits
+            with patch(
+                "backend.agents.price_verifier._web_search_price", AsyncMock(return_value=[0.99])
+            ):  # 1 web hit → 3 total, agree
                 from backend.agents.price_verifier import verify_line_items
+
                 records = await verify_line_items(line_items, triggered_by="on_demand")
 
     assert records[0]["flagged"] == 1
@@ -207,8 +232,9 @@ async def test_verify_line_items_flags_deviation_over_5_pct(tmp_path):
 async def test_verify_line_items_auto_updates_csv_with_3_agreeing_sources(tmp_path):
     """Phase 1 gets 1 supplier hit; Phase 2 fires (< 2 trigger) and adds web search;
     total 3 agreeing sources → auto_updated=1 and CSV is rewritten."""
-    import aiosqlite
     import csv
+
+    import aiosqlite
 
     db_path = str(tmp_path / "test.db")
     csv_path = tmp_path / "material_costs.csv"
@@ -218,26 +244,34 @@ async def test_verify_line_items_auto_updates_csv_with_3_agreeing_sources(tmp_pa
     )
 
     from backend.api.main import _CREATE_TABLES
+
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(_CREATE_TABLES)
         await db.commit()
 
-    line_items = [{
-        "description": "Framing Lumber (2x4x8)",
-        "unit": "LF",
-        "unit_material_cost": 0.60,
-        "unit_labor_cost": 0.20,
-        "quantity": 1000,
-        "subtotal": 800.0,
-    }]
+    line_items = [
+        {
+            "description": "Framing Lumber (2x4x8)",
+            "unit": "LF",
+            "unit_material_cost": 0.60,
+            "unit_labor_cost": 0.20,
+            "quantity": 1000,
+            "subtotal": 800.0,
+        }
+    ]
 
     with patch("backend.agents.price_verifier.DB_PATH", db_path):
         with patch("backend.agents.price_verifier.CSV_PATH", csv_path):
-            with patch("backend.agents.price_verifier._fetch_supplier_price",
-                       AsyncMock(side_effect=[1.00, None])):
-                with patch("backend.agents.price_verifier._web_search_price",
-                           AsyncMock(return_value=[0.98, 1.02])):
+            with patch(
+                "backend.agents.price_verifier._fetch_supplier_price",
+                AsyncMock(side_effect=[1.00, None]),
+            ):
+                with patch(
+                    "backend.agents.price_verifier._web_search_price",
+                    AsyncMock(return_value=[0.98, 1.02]),
+                ):
                     from backend.agents.price_verifier import verify_line_items
+
                     records = await verify_line_items(line_items, triggered_by="nightly")
 
     assert records[0]["auto_updated"] == 1

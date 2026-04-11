@@ -33,10 +33,12 @@ def _validate_gws_bin() -> None:
             settings.gws_bin,
         )
 
+
 _validate_gws_bin()
 
 
 # ── Low-level CLI wrapper ─────────────────────────────────────────────────────
+
 
 def _gws(*args: str) -> dict:
     """
@@ -55,7 +57,9 @@ def _gws(*args: str) -> dict:
         if result.returncode != 0:
             log.warning(
                 "gws command failed (exit %d): %s\nstderr: %s",
-                result.returncode, " ".join(cmd), result.stderr[:400],
+                result.returncode,
+                " ".join(cmd),
+                result.stderr[:400],
             )
             return {}
         try:
@@ -92,16 +96,21 @@ def _sanitize_arg(v: str, max_len: int = 200) -> str:
 
 # ── Gmail ─────────────────────────────────────────────────────────────────────
 
+
 async def _gmail_send(subject: str, body: str) -> None:
     """Send a notification email. No-op if gws_enabled or gws_notify_email is unset."""
     if not settings.gws_enabled or not settings.gws_notify_email:
         return
     await asyncio.to_thread(
         _gws,
-        "gmail", "+send",
-        "--to", settings.gws_notify_email,
-        "--subject", subject,
-        "--body", body,
+        "gmail",
+        "+send",
+        "--to",
+        settings.gws_notify_email,
+        "--subject",
+        subject,
+        "--body",
+        body,
     )
 
 
@@ -210,6 +219,7 @@ async def notify_outcome(
 
 # ── Sheets ────────────────────────────────────────────────────────────────────
 
+
 async def log_tournament_to_sheet(
     *,
     tournament_id: int,
@@ -229,21 +239,28 @@ async def log_tournament_to_sheet(
 
     tasks = []
     for entry in consensus_entries:
-        row = ",".join([
-            _safe_val(ts),
-            str(tournament_id),
-            _safe_val(client_id),
-            desc_safe,
-            _safe_val(entry.get("agent_name", "")),
-            str(entry.get("total_bid", "")),
-            _safe_val(entry.get("confidence", "")),
-        ])
-        tasks.append(asyncio.to_thread(
-            _gws,
-            "sheets", "+append",
-            "--spreadsheet", settings.gws_tournament_sheet_id,
-            "--values", row,
-        ))
+        row = ",".join(
+            [
+                _safe_val(ts),
+                str(tournament_id),
+                _safe_val(client_id),
+                desc_safe,
+                _safe_val(entry.get("agent_name", "")),
+                str(entry.get("total_bid", "")),
+                _safe_val(entry.get("confidence", "")),
+            ]
+        )
+        tasks.append(
+            asyncio.to_thread(
+                _gws,
+                "sheets",
+                "+append",
+                "--spreadsheet",
+                settings.gws_tournament_sheet_id,
+                "--values",
+                row,
+            )
+        )
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
@@ -263,25 +280,33 @@ async def log_price_audit_to_sheet(records: list[dict]) -> None:
 
     tasks = []
     for r in flagged:
-        row = ",".join([
-            date_str,
-            _safe_val(r.get("line_item", r.get("description", ""))),
-            _safe_val(r.get("unit", "")),
-            str(r.get("ai_unit_cost", r.get("unit_material_cost", ""))),
-            str(r.get("verified_low", "")),
-            str(r.get("verified_high", "")),
-            str(r.get("deviation_pct", "")),
-        ])
-        tasks.append(asyncio.to_thread(
-            _gws,
-            "sheets", "+append",
-            "--spreadsheet", settings.gws_price_audit_sheet_id,
-            "--values", row,
-        ))
+        row = ",".join(
+            [
+                date_str,
+                _safe_val(r.get("line_item", r.get("description", ""))),
+                _safe_val(r.get("unit", "")),
+                str(r.get("ai_unit_cost", r.get("unit_material_cost", ""))),
+                str(r.get("verified_low", "")),
+                str(r.get("verified_high", "")),
+                str(r.get("deviation_pct", "")),
+            ]
+        )
+        tasks.append(
+            asyncio.to_thread(
+                _gws,
+                "sheets",
+                "+append",
+                "--spreadsheet",
+                settings.gws_price_audit_sheet_id,
+                "--values",
+                row,
+            )
+        )
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # ── Calendar ──────────────────────────────────────────────────────────────────
+
 
 async def create_bid_deadline_event(
     *,
@@ -300,10 +325,16 @@ async def create_bid_deadline_event(
     safe_job_slug = _sanitize_arg(job_slug)
     await asyncio.to_thread(
         _gws,
-        "calendar", "+insert",
-        "--summary", f"[TakeoffAI] Bid Due: {safe_project_name}",
-        "--start", due_date,
-        "--end", due_date,
-        "--description", f"Bid deadline for job {safe_job_slug}",
-        "--calendar", settings.gws_calendar_id,
+        "calendar",
+        "+insert",
+        "--summary",
+        f"[TakeoffAI] Bid Due: {safe_project_name}",
+        "--start",
+        due_date,
+        "--end",
+        due_date,
+        "--description",
+        f"Bid deadline for job {safe_job_slug}",
+        "--calendar",
+        settings.gws_calendar_id,
     )

@@ -1,12 +1,13 @@
 """Tests for wiki API routes — job CRUD and lint."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from httpx import AsyncClient, ASGITransport
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.api.main import app
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 import backend.agents._wiki_io as _io
 import backend.agents._wiki_llm as _llm
+from backend.api.main import app
 
 
 @pytest.mark.anyio
@@ -15,6 +16,7 @@ async def test_job_create(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
 
@@ -25,13 +27,17 @@ async def test_job_create(monkeypatch, tmp_path):
     monkeypatch.setattr(_llm, "_anthropic", mock_client)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.post("/api/job/create", json={
-            "client_id": "acme",
-            "project_name": "Test Job",
-            "description": "Build a test structure for testing purposes",
-            "zip_code": "78701",
-            "trade_type": "general",
-        }, headers={"X-API-Key": "test-key"})
+        resp = await c.post(
+            "/api/job/create",
+            json={
+                "client_id": "acme",
+                "project_name": "Test Job",
+                "description": "Build a test structure for testing purposes",
+                "zip_code": "78701",
+                "trade_type": "general",
+            },
+            headers={"X-API-Key": "test-key"},
+        )
 
     assert resp.status_code == 200
     data = resp.json()
@@ -54,6 +60,7 @@ async def test_job_get_not_found(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -67,6 +74,7 @@ async def test_job_update_status(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
     monkeypatch.setattr(_io, "PERSONALITIES_DIR", tmp_path / "personalities")
@@ -77,7 +85,12 @@ async def test_job_update_status(monkeypatch, tmp_path):
     job_path = tmp_path / "jobs" / "test-job.md"
     wm._write_page(
         job_path,
-        {"status": "tournament-complete", "client": "acme", "tournament_id": 1, "winner_personality": "balanced"},
+        {
+            "status": "tournament-complete",
+            "client": "acme",
+            "tournament_id": 1,
+            "winner_personality": "balanced",
+        },
         "# Test\n\n## Scope\nBuild it.",
     )
 
@@ -88,11 +101,15 @@ async def test_job_update_status(monkeypatch, tmp_path):
     monkeypatch.setattr(_llm, "_anthropic", mock_client)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.post("/api/job/update", json={
-            "job_slug": "test-job",
-            "status": "bid-submitted",
-            "our_bid": 150000,
-        }, headers={"X-API-Key": "test-key"})
+        resp = await c.post(
+            "/api/job/update",
+            json={
+                "job_slug": "test-job",
+                "status": "bid-submitted",
+                "our_bid": 150000,
+            },
+            headers={"X-API-Key": "test-key"},
+        )
 
     assert resp.status_code == 200
     data = resp.json()
@@ -105,18 +122,31 @@ async def test_jobs_list(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
 
     (tmp_path / "jobs").mkdir(parents=True)
     wm._write_page(
         tmp_path / "jobs" / "job-a.md",
-        {"status": "prospect", "client": "acme", "date": "2026-04-06", "trade": "general", "zip": "78701"},
+        {
+            "status": "prospect",
+            "client": "acme",
+            "date": "2026-04-06",
+            "trade": "general",
+            "zip": "78701",
+        },
         "# Job A",
     )
     wm._write_page(
         tmp_path / "jobs" / "job-b.md",
-        {"status": "won", "client": "bob", "date": "2026-04-05", "trade": "concrete", "zip": "76801"},
+        {
+            "status": "won",
+            "client": "bob",
+            "date": "2026-04-05",
+            "trade": "concrete",
+            "zip": "76801",
+        },
         "# Job B",
     )
 
@@ -134,11 +164,14 @@ async def test_jobs_list_filter_active(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
 
     (tmp_path / "jobs").mkdir(parents=True)
-    wm._write_page(tmp_path / "jobs" / "active.md", {"status": "prospect", "client": "a"}, "# Active")
+    wm._write_page(
+        tmp_path / "jobs" / "active.md", {"status": "prospect", "client": "a"}, "# Active"
+    )
     wm._write_page(tmp_path / "jobs" / "done.md", {"status": "closed", "client": "b"}, "# Done")
     wm._write_page(tmp_path / "jobs" / "lost.md", {"status": "lost", "client": "c"}, "# Lost")
 
@@ -157,6 +190,7 @@ async def test_wiki_lint_endpoint(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
     monkeypatch.setattr(_io, "MATERIALS_DIR", tmp_path / "materials")
