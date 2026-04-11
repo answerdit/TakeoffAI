@@ -399,8 +399,9 @@ def test_rerank_disabled_by_default_preserves_order(monkeypatch):
 
     monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", False)
     consensus = _sample_consensus()
-    out = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), "balanced")
+    out, active = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), "balanced")
     assert [e.agent_name for e in out] == [e.agent_name for e in consensus]
+    assert active is False
 
 
 def test_rerank_enabled_but_too_few_jobs_preserves_order(monkeypatch):
@@ -409,8 +410,11 @@ def test_rerank_enabled_but_too_few_jobs_preserves_order(monkeypatch):
     monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", True)
     monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_min_jobs", 5)
     consensus = _sample_consensus()
-    out = _maybe_rerank_by_accuracy(consensus, _sample_annotations(balanced_jobs=2), "balanced")
+    out, active = _maybe_rerank_by_accuracy(
+        consensus, _sample_annotations(balanced_jobs=2), "balanced"
+    )
     assert [e.agent_name for e in out] == [e.agent_name for e in consensus]
+    assert active is False
 
 
 def test_rerank_enabled_sorts_by_deviation_flags_bottom(monkeypatch):
@@ -419,7 +423,7 @@ def test_rerank_enabled_sorts_by_deviation_flags_bottom(monkeypatch):
     monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", True)
     monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_min_jobs", 5)
     consensus = _sample_consensus()
-    out = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), "balanced")
+    out, active = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), "balanced")
     # Non-flagged with data, ascending: balanced(0.5) < conservative(3.0) < market_beater(4.0)
     # Then no-data: historical_match
     # Then flagged: aggressive
@@ -430,6 +434,7 @@ def test_rerank_enabled_sorts_by_deviation_flags_bottom(monkeypatch):
         "historical_match",
         "aggressive",
     ]
+    assert active is True
 
 
 def test_rerank_no_recommended_agent_preserves_order(monkeypatch):
@@ -438,5 +443,6 @@ def test_rerank_no_recommended_agent_preserves_order(monkeypatch):
     monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", True)
     monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_min_jobs", 5)
     consensus = _sample_consensus()
-    out = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), None)
+    out, active = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), None)
     assert [e.agent_name for e in out] == [e.agent_name for e in consensus]
+    assert active is False

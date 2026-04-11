@@ -89,6 +89,7 @@ class TournamentResult:
     consensus_entries: list[AgentResult] = field(default_factory=list)
     accuracy_annotations: dict = field(default_factory=dict)
     accuracy_recommended_agent: Optional[str] = None
+    rerank_active: bool = False
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -174,12 +175,16 @@ def _maybe_rerank_by_accuracy(
     consensus: list[AgentResult],
     annotations: dict,
     recommended_agent: Optional[str],
-) -> list[AgentResult]:
+) -> tuple[list[AgentResult], bool]:
     """
     Optionally re-rank consensus entries by historical accuracy (hybrid rollout phase 2).
 
     Guarded by settings.tournament_accuracy_rerank_enabled. Only kicks in when the
     recommended agent has at least `tournament_accuracy_rerank_min_jobs` closed jobs.
+
+    Returns (consensus, rerank_active). rerank_active is True only when all gates
+    passed and the order was actually sorted — the frontend uses it to badge the
+    result as "sorted by accuracy" vs "default order".
 
     Sort order (stable within each group):
       1. Non-flagged agents with data, ascending by avg_deviation_pct
@@ -187,13 +192,13 @@ def _maybe_rerank_by_accuracy(
       3. Red-flagged agents
     """
     if not settings.tournament_accuracy_rerank_enabled:
-        return consensus
+        return consensus, False
     if not recommended_agent or not annotations:
-        return consensus
+        return consensus, False
 
     rec_ann = annotations.get(recommended_agent) or {}
     if rec_ann.get("closed_job_count", 0) < settings.tournament_accuracy_rerank_min_jobs:
-        return consensus
+        return consensus, False
 
     def sort_key(entry_with_index):
         idx, entry = entry_with_index
@@ -212,7 +217,7 @@ def _maybe_rerank_by_accuracy(
 
     indexed = list(enumerate(consensus))
     indexed.sort(key=sort_key)
-    return [e for _, e in indexed]
+    return [e for _, e in indexed], True
 
 
 async def _save_tournament(
@@ -423,7 +428,7 @@ async def run_tournament(
 
             logging.exception("accuracy annotation load failed (non-fatal)")
 
-    consensus = _maybe_rerank_by_accuracy(
+    consensus, rerank_active = _maybe_rerank_by_accuracy(
         consensus, accuracy_annotations, accuracy_recommended_agent
     )
 
@@ -443,4 +448,5 @@ async def run_tournament(
         consensus_entries=consensus,
         accuracy_annotations=accuracy_annotations,
         accuracy_recommended_agent=accuracy_recommended_agent,
+        rerank_active=rerank_active,
     )

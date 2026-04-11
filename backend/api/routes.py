@@ -274,6 +274,7 @@ async def tournament_run(request: Request, req: TournamentRunRequest):
                 _serialize_entry(e, annotate=True) for e in result.consensus_entries
             ],
             "accuracy_recommended_agent": result.accuracy_recommended_agent,
+            "rerank_active": getattr(result, "rerank_active", False),
         }
         # Fire-and-forget wiki enrichment if job_slug provided
         if req.job_slug:

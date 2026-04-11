@@ -257,6 +257,7 @@ async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
         consensus_entries: list = dataclasses.field(default_factory=list)
         accuracy_annotations: dict = dataclasses.field(default_factory=dict)
         accuracy_recommended_agent: str = None
+        rerank_active: bool = False
 
     entry = FakeEntry()
     fake_result = FakeResult(entries=[entry], consensus_entries=[entry])
@@ -275,6 +276,8 @@ async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
                 )
 
             assert resp.status_code == 200
+            body = resp.json()
+            assert body["rerank_active"] is False
             import asyncio
 
             await asyncio.sleep(0.1)
