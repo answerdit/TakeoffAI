@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""
+Bake docs/tournament_guide.md into a self-contained HTML page at
+frontend/dist/tournament_guide.html.
+
+The embedded page must work when opened directly via file:// (that is the
+normal way the rest of the frontend/dist/ files are launched), so fetch()
+is not an option. We inline the markdown inside a <script type="text/markdown">
+tag and render it client-side with marked.js from a CDN.
+
+Run after editing tournament_guide.md:
+
+    python3 docs/build_tournament_guide.py
+"""
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+MD_SRC = ROOT / "docs" / "tournament_guide.md"
+HTML_OUT = ROOT / "frontend" / "dist" / "tournament_guide.html"
+
+HTML_TEMPLATE = """<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
+  <title>Tournament Guide · TakeoffAI</title>
+  <link rel=\"stylesheet\" href=\"app.css\" />
+  <style>
+    :root { --max-col: 820px; }
+
+    body { background: var(--bg); color: var(--text); padding: 0; }
+
+    .guide-header {
+      border-bottom: 1px solid rgba(97, 104, 117, 0.25);
+      padding: 22px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: #15181e;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+    .guide-header .title { font-size: 0.95rem; font-weight: 700; letter-spacing: 0.03em; }
+    .guide-header .back {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-muted); text-decoration: none;
+      padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+    }
+    .guide-header .back:hover { color: var(--text); border-color: var(--border-solid); }
+
+    main.guide {
+      max-width: var(--max-col);
+      margin: 0 auto;
+      padding: 48px 32px 96px;
+      font-size: 0.92rem;
+      line-height: 1.72;
+      color: var(--text-dim);
+    }
+
+    main.guide h1 { font-size: 1.9rem; color: var(--text); margin: 0 0 18px; letter-spacing: -0.01em; }
+    main.guide h2 {
+      font-size: 1.25rem; color: var(--text);
+      margin: 44px 0 14px; padding-top: 22px;
+      border-top: 1px solid rgba(97, 104, 117, 0.18);
+      letter-spacing: -0.005em;
+    }
+    main.guide h2:first-of-type { border-top: none; padding-top: 0; }
+    main.guide h3 { font-size: 1rem; color: var(--text); margin: 26px 0 8px; }
+
+    main.guide p { margin: 0 0 14px; }
+    main.guide ul, main.guide ol { margin: 0 0 16px 22px; }
+    main.guide li { margin: 4px 0; }
+
+    main.guide a {
+      color: var(--amber); text-decoration: none;
+      border-bottom: 1px solid rgba(16, 96, 255, 0.3);
+    }
+    main.guide a:hover { border-bottom-color: var(--amber); }
+
+    main.guide strong { color: var(--text); }
+
+    main.guide code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.84em;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: #d5d7db;
+    }
+
+    main.guide pre {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      overflow-x: auto;
+      margin: 0 0 18px;
+      font-size: 0.82rem;
+      line-height: 1.58;
+    }
+    main.guide pre code {
+      background: none; border: none; padding: 0; font-size: inherit; color: #d5d7db;
+    }
+
+    main.guide table {
+      width: 100%; border-collapse: collapse;
+      margin: 0 0 20px; font-size: 0.87rem;
+    }
+    main.guide th, main.guide td {
+      border: 1px solid var(--border);
+      padding: 8px 12px; text-align: left;
+    }
+    main.guide th {
+      background: var(--bg-card); color: var(--text);
+      font-weight: 600; font-size: 0.78rem;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    main.guide td { color: var(--text-dim); }
+
+    main.guide blockquote {
+      border-left: 3px solid var(--amber);
+      background: var(--amber-glow);
+      padding: 10px 16px;
+      margin: 0 0 16px;
+      color: var(--text-dim);
+    }
+
+    main.guide hr {
+      border: none;
+      border-top: 1px solid rgba(97, 104, 117, 0.18);
+      margin: 32px 0;
+    }
+
+    main.guide input[type=\"checkbox\"] { accent-color: var(--amber); margin-right: 6px; }
+
+    .loading, .error { padding: 32px; color: var(--text-muted); text-align: center; font-size: 0.88rem; }
+    .error { color: var(--red); }
+  </style>
+</head>
+<body>
+  <header class=\"guide-header\">
+    <span class=\"title\">Tournament Guide</span>
+    <a class=\"back\" href=\"index.html#tab-tournament\">← Back to app</a>
+  </header>
+
+  <main class=\"guide\">
+    <div id=\"content\" class=\"loading\">Rendering guide…</div>
+  </main>
+
+  <!-- Embedded markdown source — regenerated by docs/build_tournament_guide.py -->
+  <script type=\"text/markdown\" id=\"guide-md\">
+__GUIDE_MD__
+  </script>
+
+  <script src=\"https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js\"></script>
+  <script>
+    (function () {
+      const target = document.getElementById('content');
+      try {
+        const raw = document.getElementById('guide-md').textContent;
+        // Strip HTML cell markers so they do not bleed into the rendered output.
+        const cleaned = raw.replace(/<!--\\s*CELL:[^>]*-->\\s*/g, '').trim();
+        marked.setOptions({ gfm: true, breaks: false, headerIds: true });
+        target.className = '';
+        target.innerHTML = marked.parse(cleaned);
+      } catch (err) {
+        target.className = 'error';
+        target.textContent = 'Render error: ' + (err && err.message ? err.message : err);
+      }
+    })();
+  </script>
+</body>
+</html>
+"""
+
+def main() -> int:
+    if not MD_SRC.exists():
+        print(f"error: markdown not found at {MD_SRC}", file=sys.stderr)
+        return 1
+
+    md = MD_SRC.read_text(encoding="utf-8")
+
+    if "</script>" in md.lower():
+        print("error: markdown contains </script>, which would break the embed tag", file=sys.stderr)
+        return 2
+
+    HTML_OUT.parent.mkdir(parents=True, exist_ok=True)
+    out = HTML_TEMPLATE.replace("__GUIDE_MD__", md)
+    HTML_OUT.write_text(out, encoding="utf-8")
+
+    print(f"wrote {HTML_OUT} ({len(out)} bytes, markdown={len(md)} chars)")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

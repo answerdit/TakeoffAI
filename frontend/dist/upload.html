@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TakeoffAI — Bid Data Import</title>
+  <style>
+    /* ── Variables (match index.html exactly) ─────────────────────── */
+    :root {
+      --bg:           #0a0a0a;
+      --bg-card:      #111111;
+      --bg-input:     #1a1a1a;
+      --bg-hover:     #1e1e1e;
+      --border:       #2a2a2a;
+      --border-focus: #f59e0b55;
+      --amber:        #f59e0b;
+      --amber-dim:    #b45309;
+      --amber-glow:   #f59e0b22;
+      --text:         #e5e5e5;
+      --text-muted:   #6b7280;
+      --text-dim:     #9ca3af;
+      --green:        #22c55e;
+      --green-bg:     #22c55e18;
+      --red:          #ef4444;
+      --red-bg:       #ef444418;
+      --radius:       8px;
+      --radius-lg:    12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 100;
+    }
+
+    .logo { display: flex; align-items: baseline; gap: 10px; }
+
+    .logo-name {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--amber);
+    }
+
+    .logo-name span { color: var(--text); }
+
+    .logo-subtitle {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+    }
+
+    .back-link {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .back-link:hover { color: var(--amber); }
+
+    /* ── Layout ───────────────────────────────────────────────────── */
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    /* ── Client ID bar ────────────────────────────────────────────── */
+    .client-bar {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1rem 1.5rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .client-bar label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      font-weight: 600;
+      white-space: nowrap;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .client-bar input {
+      flex: 1;
+      max-width: 320px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.9rem;
+      padding: 0.55rem 0.75rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+
+    .client-bar input:focus {
+      outline: none;
+      border-color: var(--amber-dim);
+      box-shadow: 0 0 0 3px var(--amber-glow);
+    }
+
+    .client-hint {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Tabs ─────────────────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.75rem;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.75rem 1.25rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+      letter-spacing: 0.01em;
+    }
+
+    .tab-btn:hover { color: var(--text-dim); }
+
+    .tab-btn.active {
+      color: var(--amber);
+      border-bottom-color: var(--amber);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Cards ────────────────────────────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .card-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    /* ── Buttons ──────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--amber);
+      color: #000;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.6rem 1.25rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: opacity 0.15s, transform 0.1s;
+      font-family: inherit;
+    }
+
+    .btn:hover:not(:disabled) { opacity: 0.88; }
+    .btn:active:not(:disabled) { transform: scale(0.98); }
+
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover:not(:disabled) {
+      color: var(--text);
+      border-color: var(--text-muted);
+      opacity: 1;
+    }
+
+    .btn-sm {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--red);
+      border: 1px solid transparent;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.82rem;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      border-color: var(--red);
+      opacity: 1;
+    }
+
+    /* ── Drop zone ────────────────────────────────────────────────── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      padding: 2.5rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragging {
+      border-color: var(--amber);
+      background: var(--amber-glow);
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      opacity: 0.6;
+    }
+
+    .drop-label {
+      font-size: 0.95rem;
+      color: var(--text-dim);
+      margin-bottom: 0.25rem;
+    }
+
+    .drop-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .file-chosen {
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--amber-glow);
+      border: 1px solid var(--amber-dim);
+      border-radius: var(--radius);
+      padding: 0.6rem 1rem;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+    }
+
+    .file-chosen.visible { display: flex; }
+
+    .file-name {
+      font-weight: 600;
+      color: var(--amber);
+      flex: 1;
+    }
+
+    /* ── Preview table ────────────────────────────────────────────── */
+    .preview-wrap {
+      display: none;
+      overflow-x: auto;
+      margin-top: 1.25rem;
+    }
+
+    .preview-wrap.visible { display: block; }
+
+    .preview-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.72rem;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+      white-space: nowrap;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    /* ── Template row ─────────────────────────────────────────────── */
+    .template-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    /* ── Upload actions ───────────────────────────────────────────── */
+    .upload-actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+      align-items: center;
+    }
+
+    /* ── Manual entry table ───────────────────────────────────────── */
+    .manual-table-wrap {
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+
+    .manual-table {
+      width: max-content;
+      min-width: 100%;
+      border-collapse: collapse;
+    }
+
+    .manual-table th {
+      background: var(--bg-input);
+      white-space: nowrap;
+    }
+
+    .manual-table td { padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--border); }
+    .manual-table tr:last-child td { border-bottom: none; }
+
+    .manual-table input[type="text"],
+    .manual-table input[type="date"],
+    .manual-table input[type="number"],
+    .manual-table select {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.82rem;
+      padding: 0.35rem 0.55rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+
+    .manual-table input[type="text"] { width: 140px; }
+    .manual-table input[type="text"].wide { width: 200px; }
+    .manual-table input[type="text"].narrow { width: 72px; }
+    .manual-table input[type="date"] { width: 130px; }
+    .manual-table input[type="number"] { width: 100px; }
+    .manual-table select { width: 110px; cursor: pointer; }
+
+    .manual-table input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: var(--amber);
+    }
+
+    .manual-table input:focus, .manual-table select:focus {
+      outline: none;
+      border-color: var(--amber-dim);
+    }
+
+    .empty-manual {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+
+    /* ── Result card ──────────────────────────────────────────────── */
+    .result-card {
+      display: none;
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.5rem;
+      margin-top: 1.5rem;
+      border: 1px solid;
+    }
+
+    .result-card.visible { display: block; }
+
+    .result-card.success {
+      background: var(--green-bg);
+      border-color: var(--green);
+    }
+
+    .result-card.partial {
+      background: #f59e0b11;
+      border-color: var(--amber-dim);
+    }
+
+    .result-card.error {
+      background: var(--red-bg);
+      border-color: var(--red);
+    }
+
+    .result-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .result-card.success .result-title { color: var(--green); }
+    .result-card.partial .result-title { color: var(--amber); }
+    .result-card.error .result-title { color: var(--red); }
+
+    .result-stats {
+      display: flex;
+      gap: 1.5rem;
+      margin: 0.75rem 0;
+      flex-wrap: wrap;
+    }
+
+    .result-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .result-stat-value {
+      font-size: 1.4rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    .result-card.success .result-stat-value { color: var(--green); }
+    .result-card.partial .result-stat-value { color: var(--amber); }
+
+    .result-stat-label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .error-list {
+      margin-top: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--red);
+    }
+
+    .error-list li {
+      list-style: none;
+      padding: 0.2rem 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .error-list li:first-child { border-top: none; }
+
+    /* ── Spinner ──────────────────────────────────────────────────── */
+    .spinner {
+      display: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #00000040;
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ────────────────────────────────────────────────────── */
+    .toast-container {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .toast {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      color: white;
+      font-size: 0.875rem;
+      max-width: 320px;
+      animation: slideIn 0.2s ease;
+    }
+    .toast.error   { background: #dc2626; }
+    .toast.success { background: #16a34a; }
+    .toast.info    { background: #2563eb; }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+
+    /* ── Settings modal ───────────────────────────────────────────── */
+    .settings-modal-inner {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 2rem;
+      border-radius: var(--radius-lg);
+      min-width: 320px;
+      box-shadow: 0 16px 48px #000000aa;
+    }
+    .settings-modal-inner h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 1.25rem;
+    }
+    .settings-modal-inner label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      display: block;
+      margin-bottom: 6px;
+    }
+    .settings-modal-inner input[type="password"] {
+      width: 100%;
+    }
+    .settings-btn-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.25rem;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Settings button ─────────────────────────────────────────────────── -->
+<div id="settings-btn" style="position:fixed;top:1rem;right:1rem;cursor:pointer;font-size:1.5rem;z-index:200;line-height:1" onclick="openSettings()" title="Settings">&#9881;</div>
+
+<!-- ── Settings modal ─────────────────────────────────────────────────── -->
+<div id="settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:500;align-items:center;justify-content:center">
+  <div class="settings-modal-inner">
+    <h3>Settings</h3>
+    <label for="api-key-input">API Key</label>
+    <input id="api-key-input" type="password" placeholder="Leave blank for no auth" />
+    <div class="settings-btn-row">
+      <button class="btn btn-sm" onclick="saveSettings()">Save</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeSettings()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <span class="logo-name">Takeoff<span>AI</span></span>
+    <span class="logo-subtitle">Bid Data Import</span>
+  </div>
+  <a href="index.html" class="back-link">← Back to Estimates</a>
+</header>
+
+<main>
+
+  <!-- ── Client ID ──────────────────────────────────────────────────────── -->
+  <div class="client-bar">
+    <label for="clientId">Client ID</label>
+    <input
+      type="text"
+      id="clientId"
+      placeholder="e.g. sample_client"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <span class="client-hint">Bid history is stored per client ID. Use the same ID as your tournament runs.</span>
+  </div>
+
+  <!-- ── Tabs ───────────────────────────────────────────────────────────── -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="csv">CSV Upload</button>
+    <button class="tab-btn" data-tab="excel">Excel Upload</button>
+    <button class="tab-btn" data-tab="manual">Manual Entry</button>
+  </div>
+
+  <!-- ── CSV Tab ────────────────────────────────────────────────────────── -->
+  <div class="tab-panel active" id="panel-csv">
+    <div class="card">
+      <div class="card-title">Upload CSV File</div>
+
+      <div class="drop-zone" id="csvDrop">
+        <input type="file" id="csvFile" accept=".csv" />
+        <div class="drop-icon">📄</div>
+        <div class="drop-label">Drop your CSV file here, or click to browse</div>
+        <div class="drop-sub">Accepts .csv — download the template below to see the required format</div>
+      </div>
+
+      <div class="file-chosen" id="csvChosen">
+        <span>📎</span>
+        <span class="file-name" id="csvFileName"></span>
+        <span id="csvRowCount" style="color:var(--text-muted);font-size:0.78rem;"></span>
+      </div>
+
+      <div class="preview-wrap" id="csvPreview">
+        <div class="preview-label">Preview — first 5 rows</div>
+        <table id="csvPreviewTable"></table>
+      </div>
+
+      <div class="upload-actions">
+        <button class="btn" id="csvImportBtn" disabled data-original-text="Import CSV">
+          <span class="spinner" id="csvSpinner"></span>
+          Import CSV
+        </button>
+        <a id="csvTemplateLink" href="#" class="btn btn-ghost btn-sm" style="text-decoration:none;">
+          ⬇ Download CSV Template
+        </a>
+      </div>
+    </div>
+
+    <div class="result-card" id="csvResult"></div>
+  </div>
+
+  <!-- ── Excel Tab ──────────────────────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-excel">
+    <div class="card">
+      <div class="card-title">Upload Excel File</div>
+
+      <div class="drop-zone" id="xlDrop">
+        <input type="file" id="xlFile" accept=".xlsx,.xls" />
+        <div class="drop-icon">📊</div>
+        <div class="drop-label">Drop your Excel file here, or click to browse</div>
+        <div class="drop-sub">Accepts .xlsx — first sheet must follow the template format</div>
+      </div>
+
+      <div class="file-chosen" id="xlChosen">
+        <span>📎</span>
+        <span class="file-name" id="xlFileName"></span>
+      </div>
+
+      <div class="upload-actions">
+        <button class="btn" id="xlImportBtn" disabled data-original-text="Import Excel">
+          <span class="spinner" id="xlSpinner"></span>
+          Import Excel
+        </button>
+        <a id="xlTemplateLink" href="#" class="btn btn-ghost btn-sm" style="text-decoration:none;">
+          ⬇ Download Excel Template
+        </a>
+      </div>
+    </div>
+
+    <div class="result-card" id="xlResult"></div>
+  </div>
+
+  <!-- ── Manual Entry Tab ───────────────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-manual">
+    <div class="card">
+      <div class="card-title">Manual Bid Entry</div>
+
+      <div class="manual-table-wrap">
+        <table class="manual-table">
+          <thead>
+            <tr>
+              <th>Project Name *</th>
+              <th>Description</th>
+              <th>Location</th>
+              <th>Zip *</th>
+              <th>Date *</th>
+              <th>Trade Type</th>
+              <th>Your Bid ($) *</th>
+              <th>Won?</th>
+              <th>Winning Bid ($)</th>
+              <th>Actual Cost ($)</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="manualBody">
+            <tr id="emptyRow">
+              <td colspan="12" class="empty-manual">
+                Click "Add Row" to start entering bids
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="upload-actions">
+        <button class="btn btn-ghost" id="addRowBtn">+ Add Row</button>
+        <button class="btn" id="manualImportBtn" disabled data-original-text="Import All">
+          <span class="spinner" id="manualSpinner"></span>
+          Import All
+        </button>
+      </div>
+    </div>
+
+    <div class="result-card" id="manualResult"></div>
+  </div>
+
+</main>
+
+<script>
+  const API_BASE = 'http://localhost:8000';
+
+  // ── Toast notifications ────────────────────────────────────────────────────
+
+  function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container') || createToastContainer();
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = message;
+    container.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+
+  function createToastContainer() {
+    const el = document.createElement('div');
+    el.id = 'toast-container';
+    el.className = 'toast-container';
+    document.body.appendChild(el);
+    return el;
+  }
+
+  // ── API headers helper ─────────────────────────────────────────────────────
+
+  function getHeaders(extra = {}) {
+    const headers = { 'Content-Type': 'application/json', ...extra };
+    const apiKey = localStorage.getItem('takeoffai_api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+    return headers;
+  }
+
+  // ── Settings panel ─────────────────────────────────────────────────────────
+
+  function openSettings() {
+    document.getElementById('api-key-input').value = localStorage.getItem('takeoffai_api_key') || '';
+    document.getElementById('settings-modal').style.display = 'flex';
+  }
+
+  function closeSettings() {
+    document.getElementById('settings-modal').style.display = 'none';
+  }
+
+  function saveSettings() {
+    const key = document.getElementById('api-key-input').value.trim();
+    if (key) localStorage.setItem('takeoffai_api_key', key);
+    else localStorage.removeItem('takeoffai_api_key');
+    closeSettings();
+    showToast('Settings saved', 'success');
+  }
+
+  document.getElementById('settings-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeSettings();
+  });
+
+  // ── Utilities ──────────────────────────────────────────────────────────────
+
+  function getClientId() {
+    return document.getElementById('clientId').value.trim();
+  }
+
+  function requireClientId() {
+    const id = getClientId();
+    if (!id) {
+      document.getElementById('clientId').focus();
+      document.getElementById('clientId').style.borderColor = 'var(--red)';
+      setTimeout(() => { document.getElementById('clientId').style.borderColor = ''; }, 1500);
+      return null;
+    }
+    return id;
+  }
+
+  function showResult(containerId, data) {
+    const el = document.getElementById(containerId);
+    const imported = data.rows_imported ?? 0;
+    const skipped = data.rows_skipped ?? 0;
+    const won = data.rows_won ?? 0;
+    const errors = data.errors ?? [];
+    const isError = imported === 0;
+    const isPartial = imported > 0 && skipped > 0;
+
+    el.className = 'result-card visible ' + (isError ? 'error' : isPartial ? 'partial' : 'success');
+
+    const avg = data.profile_summary?.avg_winning_bid;
+    const avgStr = avg ? ` · Avg winning bid now $${Number(avg).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0})}` : '';
+
+    el.innerHTML = `
+      <div class="result-title">${isError ? '✗ Import Failed' : isPartial ? '⚠ Partial Import' : '✓ Import Successful'}</div>
+      <div class="result-stats">
+        <div class="result-stat">
+          <span class="result-stat-value">${imported}</span>
+          <span class="result-stat-label">Rows Imported</span>
+        </div>
+        <div class="result-stat">
+          <span class="result-stat-value">${won}</span>
+          <span class="result-stat-label">Winning Bids</span>
+        </div>
+        <div class="result-stat">
+          <span class="result-stat-value">${skipped}</span>
+          <span class="result-stat-label">Rows Skipped</span>
+        </div>
+      </div>
+      ${imported > 0 ? `<div style="font-size:0.8rem;color:var(--text-muted);">${won} winning bids added to client profile${avgStr}</div>` : ''}
+      ${errors.length > 0 ? `<ul class="error-list">${errors.slice(0,10).map(e => `<li>${e}</li>`).join('')}${errors.length > 10 ? `<li>…and ${errors.length - 10} more</li>` : ''}</ul>` : ''}
+    `;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function showError(containerId, message) {
+    const el = document.getElementById(containerId);
+    el.className = 'result-card visible error';
+    el.innerHTML = `<div class="result-title">✗ Error</div><div style="font-size:0.85rem;color:var(--text-muted);margin-top:0.5rem;">${message}</div>`;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function setLoading(btnId, spinnerId, loading) {
+    const btn = document.getElementById(btnId);
+    const spin = document.getElementById(spinnerId);
+    btn.disabled = loading;
+    spin.style.display = loading ? 'block' : 'none';
+  }
+
+  // ── Tab switching ──────────────────────────────────────────────────────────
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ── Template links ─────────────────────────────────────────────────────────
+
+  document.getElementById('csvTemplateLink').href = `${API_BASE}/api/upload/template/csv`;
+  document.getElementById('xlTemplateLink').href = `${API_BASE}/api/upload/template/excel`;
+
+  // ── CSV Upload ─────────────────────────────────────────────────────────────
+
+  function parseCsvPreview(text) {
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    const rows = lines.slice(1, 6).map(line => {
+      const vals = [];
+      let cur = '', inQ = false;
+      for (const ch of line) {
+        if (ch === '"') { inQ = !inQ; continue; }
+        if (ch === ',' && !inQ) { vals.push(cur.trim()); cur = ''; continue; }
+        cur += ch;
+      }
+      vals.push(cur.trim());
+      return vals;
+    });
+    return { headers, rows };
+  }
+
+  function renderCsvPreview(text, totalRows) {
+    const { headers, rows } = parseCsvPreview(text);
+    const table = document.getElementById('csvPreviewTable');
+    table.innerHTML = `
+      <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(row => `<tr>${headers.map((_, i) => `<td title="${row[i] ?? ''}">${(row[i] ?? '').substring(0, 30)}</td>`).join('')}</tr>`).join('')}</tbody>
+    `;
+    document.getElementById('csvPreview').classList.add('visible');
+    const dataRows = totalRows - 1;
+    document.getElementById('csvRowCount').textContent = `${dataRows} row${dataRows !== 1 ? 's' : ''}`;
+  }
+
+  function handleCsvFile(file) {
+    if (!file) return;
+    document.getElementById('csvFileName').textContent = file.name;
+    document.getElementById('csvChosen').classList.add('visible');
+    document.getElementById('csvImportBtn').disabled = false;
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = e.target.result;
+      const lineCount = text.trim().split('\n').length;
+      renderCsvPreview(text, lineCount);
+    };
+    reader.readAsText(file);
+  }
+
+  const csvFileInput = document.getElementById('csvFile');
+  csvFileInput.addEventListener('change', () => handleCsvFile(csvFileInput.files[0]));
+
+  const csvDrop = document.getElementById('csvDrop');
+  csvDrop.addEventListener('dragover', e => { e.preventDefault(); csvDrop.classList.add('dragging'); });
+  csvDrop.addEventListener('dragleave', () => csvDrop.classList.remove('dragging'));
+  csvDrop.addEventListener('drop', e => {
+    e.preventDefault();
+    csvDrop.classList.remove('dragging');
+    const file = e.dataTransfer.files[0];
+    if (file) handleCsvFile(file);
+  });
+
+  document.getElementById('csvImportBtn').addEventListener('click', async () => {
+    const clientId = requireClientId();
+    if (!clientId) return;
+    const file = csvFileInput.files[0];
+    if (!file) return;
+
+    setLoading('csvImportBtn', 'csvSpinner', true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('client_id', clientId);
+      const apiKey = localStorage.getItem('takeoffai_api_key');
+      const res = await fetch(`${API_BASE}/api/upload/bids/csv`, {
+        method: 'POST',
+        body: fd,
+        headers: apiKey ? { 'X-API-Key': apiKey } : {},
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showError('csvResult', data.detail?.message ?? data.detail ?? 'Upload failed');
+      } else {
+        showResult('csvResult', data);
+      }
+    } catch (err) {
+      showError('csvResult', err.message);
+    } finally {
+      setLoading('csvImportBtn', 'csvSpinner', false);
+    }
+  });
+
+  // ── Excel Upload ───────────────────────────────────────────────────────────
+
+  function handleXlFile(file) {
+    if (!file) return;
+    document.getElementById('xlFileName').textContent = file.name;
+    document.getElementById('xlChosen').classList.add('visible');
+    document.getElementById('xlImportBtn').disabled = false;
+  }
+
+  const xlFileInput = document.getElementById('xlFile');
+  xlFileInput.addEventListener('change', () => handleXlFile(xlFileInput.files[0]));
+
+  const xlDrop = document.getElementById('xlDrop');
+  xlDrop.addEventListener('dragover', e => { e.preventDefault(); xlDrop.classList.add('dragging'); });
+  xlDrop.addEventListener('dragleave', () => xlDrop.classList.remove('dragging'));
+  xlDrop.addEventListener('drop', e => {
+    e.preventDefault();
+    xlDrop.classList.remove('dragging');
+    const file = e.dataTransfer.files[0];
+    if (file) handleXlFile(file);
+  });
+
+  document.getElementById('xlImportBtn').addEventListener('click', async () => {
+    const clientId = requireClientId();
+    if (!clientId) return;
+    const file = xlFileInput.files[0];
+    if (!file) return;
+
+    setLoading('xlImportBtn', 'xlSpinner', true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('client_id', clientId);
+      const apiKey = localStorage.getItem('takeoffai_api_key');
+      const res = await fetch(`${API_BASE}/api/upload/bids/excel`, {
+        method: 'POST',
+        body: fd,
+        headers: apiKey ? { 'X-API-Key': apiKey } : {},
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showError('xlResult', data.detail?.message ?? data.detail ?? 'Upload failed');
+      } else {
+        showResult('xlResult', data);
+      }
+    } catch (err) {
+      showError('xlResult', err.message);
+    } finally {
+      setLoading('xlImportBtn', 'xlSpinner', false);
+    }
+  });
+
+  // ── Manual Entry ───────────────────────────────────────────────────────────
+
+  const TRADE_OPTIONS = [
+    'general','concrete','framing','roofing','electrical',
+    'plumbing','painting','hvac','masonry','sitework'
+  ];
+
+  function tradeSelect(name) {
+    return `<select name="${name}">${TRADE_OPTIONS.map(t => `<option value="${t}">${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select>`;
+  }
+
+  let rowCount = 0;
+
+  function addManualRow() {
+    const body = document.getElementById('manualBody');
+    const empty = document.getElementById('emptyRow');
+    if (empty) empty.remove();
+
+    rowCount++;
+    const id = rowCount;
+    const tr = document.createElement('tr');
+    tr.id = `mrow-${id}`;
+    tr.innerHTML = `
+      <td><input type="text" name="project_name" placeholder="Project name" required /></td>
+      <td><input type="text" class="wide" name="description" placeholder="Brief description" /></td>
+      <td><input type="text" name="location" placeholder="City, ST" /></td>
+      <td><input type="text" class="narrow" name="zip_code" placeholder="79601" maxlength="10" /></td>
+      <td><input type="date" name="bid_date" /></td>
+      <td>${tradeSelect('trade_type')}</td>
+      <td><input type="number" name="your_bid_amount" placeholder="0" min="0" step="100" /></td>
+      <td style="text-align:center;"><input type="checkbox" name="won" /></td>
+      <td><input type="number" name="winning_bid_amount" placeholder="optional" min="0" step="100" /></td>
+      <td><input type="number" name="actual_cost" placeholder="optional" min="0" step="100" /></td>
+      <td><input type="text" class="wide" name="notes" placeholder="Notes" /></td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeRow(${id})">✕</button></td>
+    `;
+    body.appendChild(tr);
+    document.getElementById('manualImportBtn').disabled = false;
+    tr.querySelector('input[name="project_name"]').focus();
+  }
+
+  function removeRow(id) {
+    const tr = document.getElementById(`mrow-${id}`);
+    if (tr) tr.remove();
+    const body = document.getElementById('manualBody');
+    if (body.children.length === 0) {
+      const empty = document.createElement('tr');
+      empty.id = 'emptyRow';
+      empty.innerHTML = '<td colspan="12" class="empty-manual">Click "Add Row" to start entering bids</td>';
+      body.appendChild(empty);
+      document.getElementById('manualImportBtn').disabled = true;
+    }
+  }
+
+  function collectManualRows() {
+    const rows = document.querySelectorAll('#manualBody tr[id^="mrow-"]');
+    return Array.from(rows).map(tr => {
+      const get = name => tr.querySelector(`[name="${name}"]`)?.value?.trim() ?? '';
+      const getNum = name => {
+        const v = parseFloat(get(name));
+        return isNaN(v) ? null : v;
+      };
+      return {
+        project_name: get('project_name'),
+        description: get('description'),
+        location: get('location'),
+        zip_code: get('zip_code'),
+        bid_date: get('bid_date'),
+        trade_type: get('trade_type'),
+        your_bid_amount: getNum('your_bid_amount') ?? 0,
+        won: tr.querySelector('[name="won"]')?.checked ?? false,
+        winning_bid_amount: getNum('winning_bid_amount'),
+        actual_cost: getNum('actual_cost'),
+        notes: get('notes'),
+      };
+    });
+  }
+
+  document.getElementById('addRowBtn').addEventListener('click', addManualRow);
+
+  document.getElementById('manualImportBtn').addEventListener('click', async () => {
+    const clientId = requireClientId();
+    if (!clientId) return;
+
+    const bids = collectManualRows();
+    if (bids.length === 0) return;
+
+    setLoading('manualImportBtn', 'manualSpinner', true);
+    try {
+      const res = await fetch(`${API_BASE}/api/upload/bids/manual`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ client_id: clientId, bids }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showError('manualResult', data.detail?.message ?? data.detail ?? 'Import failed');
+      } else {
+        showResult('manualResult', data);
+      }
+    } catch (err) {
+      showError('manualResult', err.message);
+    } finally {
+      setLoading('manualImportBtn', 'manualSpinner', false);
+    }
+  });
+</script>
+</body>
+</html>

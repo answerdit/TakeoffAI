@@ -150,6 +150,37 @@
     margin-bottom: 1rem;
     font-weight: 600;
     line-height: 1.69;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .doc-link {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(16, 96, 255, 0.35);
+    color: var(--amber);
+    background: var(--amber-glow);
+    text-decoration: none;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .doc-link:hover {
+    background: rgba(16, 96, 255, 0.16);
+    border-color: rgba(16, 96, 255, 0.55);
+  }
+  .doc-link::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--amber);
+    margin-right: 5px;
+    vertical-align: middle;
   }
 
   /* ── Form elements ──────────────────────────────────────────── */
