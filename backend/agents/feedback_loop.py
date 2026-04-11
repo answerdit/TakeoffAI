@@ -102,13 +102,16 @@ def update_client_profile(client_id: str, winner_entry: dict) -> dict:
                 elo[agent] = max(0, current + ELO_LOSE_DELTA)
 
         # Stats update
-        stats = profile.setdefault("stats", {
-            "total_tournaments": 0,
-            "win_rate_by_agent": {a: 0.0 for a in ALL_AGENTS},
-            "avg_winning_bid": 0.0,
-            "avg_winning_margin": 0.0,
-            "wins_by_agent": {a: 0 for a in ALL_AGENTS},
-        })
+        stats = profile.setdefault(
+            "stats",
+            {
+                "total_tournaments": 0,
+                "win_rate_by_agent": {a: 0.0 for a in ALL_AGENTS},
+                "avg_winning_bid": 0.0,
+                "avg_winning_margin": 0.0,
+                "wins_by_agent": {a: 0 for a in ALL_AGENTS},
+            },
+        )
         stats["total_tournaments"] = stats.get("total_tournaments", 0) + 1
 
         wins_by_agent = stats.setdefault("wins_by_agent", {a: 0 for a in ALL_AGENTS})
@@ -116,8 +119,7 @@ def update_client_profile(client_id: str, winner_entry: dict) -> dict:
 
         total = stats["total_tournaments"]
         stats["win_rate_by_agent"] = {
-            agent: round(wins_by_agent.get(agent, 0) / total, 4)
-            for agent in ALL_AGENTS
+            agent: round(wins_by_agent.get(agent, 0) / total, 4) for agent in ALL_AGENTS
         }
 
         # Rolling averages across winning_examples window
@@ -128,7 +130,8 @@ def update_client_profile(client_id: str, winner_entry: dict) -> dict:
         margins = [
             float(e["estimate_snapshot"]["margin_pct"])
             for e in examples
-            if isinstance(e.get("estimate_snapshot"), dict) and e["estimate_snapshot"].get("margin_pct") is not None
+            if isinstance(e.get("estimate_snapshot"), dict)
+            and e["estimate_snapshot"].get("margin_pct") is not None
         ]
         stats["avg_winning_margin"] = round(sum(margins) / len(margins), 4) if margins else 0.0
 
@@ -179,21 +182,29 @@ def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
             profile["winning_examples"] = profile["winning_examples"][-MAX_WINNING_EXAMPLES:]
 
         # Update upload-specific counters (separate from tournament stats)
-        upload_stats = profile.setdefault("upload_stats", {
-            "total_uploaded": 0,
-            "total_won_uploaded": 0,
-        })
+        upload_stats = profile.setdefault(
+            "upload_stats",
+            {
+                "total_uploaded": 0,
+                "total_won_uploaded": 0,
+            },
+        )
         upload_stats["total_uploaded"] = upload_stats.get("total_uploaded", 0) + len(bids)
-        upload_stats["total_won_uploaded"] = upload_stats.get("total_won_uploaded", 0) + len(winning_bids)
+        upload_stats["total_won_uploaded"] = upload_stats.get("total_won_uploaded", 0) + len(
+            winning_bids
+        )
 
         # Recalculate avg_winning_bid across all winning_examples (tournaments + uploads)
-        stats = profile.setdefault("stats", {
-            "total_tournaments": 0,
-            "win_rate_by_agent": {a: 0.0 for a in ALL_AGENTS},
-            "avg_winning_bid": 0.0,
-            "avg_winning_margin": 0.0,
-            "wins_by_agent": {a: 0 for a in ALL_AGENTS},
-        })
+        stats = profile.setdefault(
+            "stats",
+            {
+                "total_tournaments": 0,
+                "win_rate_by_agent": {a: 0.0 for a in ALL_AGENTS},
+                "avg_winning_bid": 0.0,
+                "avg_winning_margin": 0.0,
+                "wins_by_agent": {a: 0 for a in ALL_AGENTS},
+            },
+        )
         all_bids = [e["total_bid"] for e in profile["winning_examples"] if e.get("total_bid")]
         stats["avg_winning_bid"] = round(sum(all_bids) / len(all_bids), 2) if all_bids else 0.0
 
@@ -243,8 +254,8 @@ def load_client_context(client_id: str) -> str:
 
 # ── Calibration & Accuracy (appended — no existing functions modified) ────────
 
-RED_FLAG_DEVIATION_THRESHOLD = 5.0   # % average deviation to red-flag an agent
-RED_FLAG_LOOKBACK = 5                # number of most recent jobs to consider
+RED_FLAG_DEVIATION_THRESHOLD = 5.0  # % average deviation to red-flag an agent
+RED_FLAG_LOOKBACK = 5  # number of most recent jobs to consider
 
 
 def _compute_brier_score(
@@ -300,14 +311,17 @@ async def record_actual_outcome(
         profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
 
         # Initialise calibration block if absent
-        cal = profile.setdefault("calibration", {
-            "win_prob_predictions": [],
-            "win_prob_actuals": [],
-            "brier_score": None,
-            "confidence_accuracy": {},
-            "agent_deviation_history": {agent: [] for agent in ALL_AGENTS},
-            "red_flagged_agents": [],
-        })
+        cal = profile.setdefault(
+            "calibration",
+            {
+                "win_prob_predictions": [],
+                "win_prob_actuals": [],
+                "brier_score": None,
+                "confidence_accuracy": {},
+                "agent_deviation_history": {agent: [] for agent in ALL_AGENTS},
+                "red_flagged_agents": [],
+            },
+        )
         cal.setdefault("agent_deviation_history", {agent: [] for agent in ALL_AGENTS})
         cal.setdefault("red_flagged_agents", [])
 
@@ -382,8 +396,7 @@ def get_agent_accuracy_report(client_id: str) -> dict:
     ranked = [
         (a, report[a]["avg_deviation_pct"])
         for a in ALL_AGENTS
-        if report[a]["avg_deviation_pct"] is not None
-        and not report[a]["red_flagged"]
+        if report[a]["avg_deviation_pct"] is not None and not report[a]["red_flagged"]
     ]
     ranked.sort(key=lambda x: x[1])
     report["recommended_agent"] = ranked[0][0] if ranked else None
@@ -391,6 +404,64 @@ def get_agent_accuracy_report(client_id: str) -> dict:
     report["win_prob_predictions_count"] = len(cal.get("win_prob_predictions", []))
 
     return report
+
+
+def get_accuracy_annotations(client_id: str) -> dict:
+    """
+    Return per-agent accuracy annotations for injection into tournament responses.
+
+    Safe to call from any context: missing profile, missing calibration block,
+    or empty deviation history all return sensible empty defaults — never raises.
+
+    Shape:
+    {
+      "per_agent": {
+        "<agent_name>": {
+          "avg_deviation_pct": float | None,   # mean |deviation| over closed jobs (last 5)
+          "closed_job_count": int,             # number of recorded deviations
+          "is_accuracy_flagged": bool,         # True if avg_deviation > RED_FLAG_DEVIATION_THRESHOLD
+        },
+        ...
+      },
+      "recommended_agent": str | None,  # lowest-deviation non-flagged agent, or None
+    }
+    """
+    path = _profile_path(client_id)
+    if not path.exists():
+        return {"per_agent": {}, "recommended_agent": None}
+
+    try:
+        profile = json.loads(path.read_text())
+    except Exception:
+        return {"per_agent": {}, "recommended_agent": None}
+
+    cal = profile.get("calibration") or {}
+    deviation_history = cal.get("agent_deviation_history") or {}
+    red_flagged = set(cal.get("red_flagged_agents") or [])
+
+    per_agent: dict = {}
+    for agent in ALL_AGENTS:
+        history = deviation_history.get(agent) or []
+        count = len(history)
+        if count > 0:
+            avg_dev = round(sum(abs(d) for d in history) / count, 4)
+        else:
+            avg_dev = None
+        per_agent[agent] = {
+            "avg_deviation_pct": avg_dev,
+            "closed_job_count": count,
+            "is_accuracy_flagged": agent in red_flagged,
+        }
+
+    ranked = [
+        (a, per_agent[a]["avg_deviation_pct"])
+        for a in ALL_AGENTS
+        if per_agent[a]["avg_deviation_pct"] is not None and not per_agent[a]["is_accuracy_flagged"]
+    ]
+    ranked.sort(key=lambda x: x[1])
+    recommended = ranked[0][0] if ranked else None
+
+    return {"per_agent": per_agent, "recommended_agent": recommended}
 
 
 def exclude_agent(client_id: str, agent_name: str) -> dict:
@@ -419,14 +490,17 @@ def reset_agent_history(client_id: str, agent_name: str) -> dict:
     with _profile_lock(client_id):
         profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
 
-        cal = profile.setdefault("calibration", {
-            "win_prob_predictions": [],
-            "win_prob_actuals": [],
-            "brier_score": None,
-            "confidence_accuracy": {},
-            "agent_deviation_history": {a: [] for a in ALL_AGENTS},
-            "red_flagged_agents": [],
-        })
+        cal = profile.setdefault(
+            "calibration",
+            {
+                "win_prob_predictions": [],
+                "win_prob_actuals": [],
+                "brier_score": None,
+                "confidence_accuracy": {},
+                "agent_deviation_history": {a: [] for a in ALL_AGENTS},
+                "red_flagged_agents": [],
+            },
+        )
         cal.setdefault("agent_deviation_history", {})[agent_name] = []
         red_flagged = cal.setdefault("red_flagged_agents", [])
         if agent_name in red_flagged:

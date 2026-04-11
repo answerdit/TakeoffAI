@@ -1,8 +1,9 @@
 """Tests for FastAPI routes — health endpoint and basic 422 validation."""
 
-import pytest
-from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 from backend.api.main import app
 
@@ -43,11 +44,15 @@ async def test_tournament_run_n_samples_invalid(monkeypatch):
     """n_samples > 5 should return 422."""
     monkeypatch.setenv("API_KEY", "test-key")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.post("/api/tournament/run", json={
-            "description": "Build a 10,000 sqft warehouse in Houston TX",
-            "zip_code": "77001",
-            "n_samples": 99,
-        }, headers={"X-API-Key": "test-key"})
+        resp = await c.post(
+            "/api/tournament/run",
+            json={
+                "description": "Build a 10,000 sqft warehouse in Houston TX",
+                "zip_code": "77001",
+                "n_samples": 99,
+            },
+            headers={"X-API-Key": "test-key"},
+        )
     assert resp.status_code == 422
 
 
@@ -56,11 +61,15 @@ async def test_tournament_run_n_samples_zero_invalid(monkeypatch):
     """n_samples=0 should return 422."""
     monkeypatch.setenv("API_KEY", "test-key")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.post("/api/tournament/run", json={
-            "description": "Build a 10,000 sqft warehouse in Houston TX",
-            "zip_code": "77001",
-            "n_samples": 0,
-        }, headers={"X-API-Key": "test-key"})
+        resp = await c.post(
+            "/api/tournament/run",
+            json={
+                "description": "Build a 10,000 sqft warehouse in Houston TX",
+                "zip_code": "77001",
+                "n_samples": 0,
+            },
+            headers={"X-API-Key": "test-key"},
+        )
     assert resp.status_code == 422
 
 
@@ -141,6 +150,7 @@ async def test_estimate_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
+
     monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
 
     # Pre-create job page
@@ -183,6 +193,7 @@ async def test_estimate_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
             assert resp.status_code == 200
             # Give the background task a moment
             import asyncio
+
             await asyncio.sleep(0.1)
             mock_enrich.assert_called_once()
 
@@ -224,8 +235,8 @@ async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
     """Tournament with job_slug should fire wiki enrich_tournament in background."""
     monkeypatch.setenv("API_KEY", "test-key")
 
-    from unittest.mock import MagicMock
     import dataclasses
+    from unittest.mock import MagicMock
 
     # Minimal mock of TournamentResult and TournamentEntry
     @dataclasses.dataclass
@@ -244,6 +255,8 @@ async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
         tournament_id: int = 1
         entries: list = dataclasses.field(default_factory=list)
         consensus_entries: list = dataclasses.field(default_factory=list)
+        accuracy_annotations: dict = dataclasses.field(default_factory=dict)
+        accuracy_recommended_agent: str = None
 
     entry = FakeEntry()
     fake_result = FakeResult(entries=[entry], consensus_entries=[entry])
@@ -263,6 +276,7 @@ async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
 
             assert resp.status_code == 200
             import asyncio
+
             await asyncio.sleep(0.1)
             mock_enrich.assert_called_once()
 

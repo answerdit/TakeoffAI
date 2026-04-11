@@ -87,6 +87,8 @@ class TournamentResult:
     tournament_id: int
     entries: list[AgentResult] = field(default_factory=list)
     consensus_entries: list[AgentResult] = field(default_factory=list)
+    accuracy_annotations: dict = field(default_factory=dict)
+    accuracy_recommended_agent: Optional[str] = None
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -362,6 +364,20 @@ async def run_tournament(
 
     consensus = _collapse_to_consensus(results)
 
+    accuracy_annotations: dict = {}
+    accuracy_recommended_agent: Optional[str] = None
+    if client_id:
+        try:
+            from backend.agents.feedback_loop import get_accuracy_annotations
+
+            annotations = await asyncio.to_thread(get_accuracy_annotations, client_id)
+            accuracy_annotations = annotations.get("per_agent") or {}
+            accuracy_recommended_agent = annotations.get("recommended_agent")
+        except Exception:
+            import logging
+
+            logging.exception("accuracy annotation load failed (non-fatal)")
+
     # Build a key set for marking consensus entries in the DB
     consensus_keys = {(e.agent_name, e.total_bid, e.temperature, e.sample_index) for e in consensus}
 
@@ -376,4 +392,6 @@ async def run_tournament(
         tournament_id=tournament_id,
         entries=results,
         consensus_entries=consensus,
+        accuracy_annotations=accuracy_annotations,
+        accuracy_recommended_agent=accuracy_recommended_agent,
     )

@@ -19,13 +19,15 @@ from pydantic import BaseModel, Field, model_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from backend.agents.feedback_loop import exclude_agent as _exclude_agent, reset_agent_history as _reset_agent_history
-from backend.api.validators import validate_client_id
-from backend.agents.harness_evolver import evolve_harness as _evolve_harness, _get_lock
-from backend.agents.pre_bid_calc import preprocess_blueprint, run_prebid_calc
 from backend.agents.bid_to_win import run_bid_to_win
-from backend.agents.tournament import run_tournament
+from backend.agents.feedback_loop import exclude_agent as _exclude_agent
+from backend.agents.feedback_loop import reset_agent_history as _reset_agent_history
+from backend.agents.harness_evolver import _get_lock
+from backend.agents.harness_evolver import evolve_harness as _evolve_harness
 from backend.agents.judge import judge_tournament
+from backend.agents.pre_bid_calc import preprocess_blueprint, run_prebid_calc
+from backend.agents.tournament import run_tournament
+from backend.api.validators import validate_client_id
 from backend.config import settings
 
 DB_PATH = settings.db_path
@@ -70,13 +72,20 @@ router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 # ── Request / Response models ────────────────────────────────────────────────
 
+
 class EstimateRequest(BaseModel):
     description: str = Field(..., min_length=10, description="Plain-English project description")
-    zip_code: str = Field(..., min_length=5, max_length=10, description="Project zip code for regional cost index")
-    trade_type: str = Field(default="general", description="Primary trade (general, electrical, plumbing, etc.)")
+    zip_code: str = Field(
+        ..., min_length=5, max_length=10, description="Project zip code for regional cost index"
+    )
+    trade_type: str = Field(
+        default="general", description="Primary trade (general, electrical, plumbing, etc.)"
+    )
     overhead_pct: float = Field(default=None, ge=0, le=100, description="Overhead % to apply")
     margin_pct: float = Field(default=None, ge=0, le=100, description="Target margin %")
-    job_slug: Optional[str] = Field(default=None, description="Job slug to enrich wiki page (optional)")
+    job_slug: Optional[str] = Field(
+        default=None, description="Job slug to enrich wiki page (optional)"
+    )
 
     def resolved_overhead(self) -> float:
         return self.overhead_pct if self.overhead_pct is not None else settings.default_overhead_pct
@@ -87,13 +96,20 @@ class EstimateRequest(BaseModel):
 
 class BidStrategyRequest(BaseModel):
     estimate: dict = Field(..., description="Estimate JSON from /api/estimate")
-    rfp_text: str = Field(..., min_length=20, max_length=50000, description="Raw RFP / scope-of-work text")
-    project_type: str = Field(default="commercial", description="commercial | residential | government")
-    known_competitors: list[str] | None = Field(default=None, description="Known bidders (optional)", max_length=20)
+    rfp_text: str = Field(
+        ..., min_length=20, max_length=50000, description="Raw RFP / scope-of-work text"
+    )
+    project_type: str = Field(
+        default="commercial", description="commercial | residential | government"
+    )
+    known_competitors: list[str] | None = Field(
+        default=None, description="Known bidders (optional)", max_length=20
+    )
 
     @model_validator(mode="after")
     def check_estimate_size(self):
         import json
+
         raw = json.dumps(self.estimate)
         if len(raw) > 500_000:
             raise ValueError("estimate JSON exceeds 500KB limit")
@@ -101,6 +117,7 @@ class BidStrategyRequest(BaseModel):
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
 
 @router.post("/estimate")
 @limiter.limit("30/minute")
@@ -178,16 +195,23 @@ async def bid_strategy(request: Request, req: BidStrategyRequest):
 
 # ── Tournament endpoints ──────────────────────────────────────────────────────
 
+
 class TournamentRunRequest(BaseModel):
     description: str = Field(..., min_length=10, description="Plain-English project description")
     zip_code: str = Field(..., min_length=5, max_length=10, description="Project zip code")
     trade_type: str = Field(default="general", description="Primary trade type")
     overhead_pct: float = Field(default=None, ge=0, le=100, description="Overhead %")
     margin_pct: float = Field(default=None, ge=0, le=100, description="Target margin %")
-    client_id: Optional[str] = Field(default=None, description="Client ID for profile-aware bidding")
+    client_id: Optional[str] = Field(
+        default=None, description="Client ID for profile-aware bidding"
+    )
     n_agents: int = Field(default=5, ge=1, le=5, description="Number of agent personalities to run")
-    n_samples: int = Field(default=2, ge=1, le=5, description="Samples per personality×temperature cell (1–5)")
-    job_slug: Optional[str] = Field(default=None, description="Job slug to enrich wiki page (optional)")
+    n_samples: int = Field(
+        default=2, ge=1, le=5, description="Samples per personality×temperature cell (1–5)"
+    )
+    job_slug: Optional[str] = Field(
+        default=None, description="Job slug to enrich wiki page (optional)"
+    )
 
     def resolved_overhead(self) -> float:
         return self.overhead_pct if self.overhead_pct is not None else settings.default_overhead_pct
@@ -198,8 +222,12 @@ class TournamentRunRequest(BaseModel):
 
 class TournamentJudgeRequest(BaseModel):
     tournament_id: int = Field(..., description="ID of the tournament to judge")
-    winner_agent_name: Optional[str] = Field(default=None, description="HUMAN mode: name the winning agent")
-    actual_winning_bid: Optional[float] = Field(default=None, ge=0, description="HISTORICAL mode: actual market-winning bid amount")
+    winner_agent_name: Optional[str] = Field(
+        default=None, description="HUMAN mode: name the winning agent"
+    )
+    actual_winning_bid: Optional[float] = Field(
+        default=None, ge=0, description="HISTORICAL mode: actual market-winning bid amount"
+    )
     human_notes: Optional[str] = Field(default=None, description="Optional free-text notes")
 
 
@@ -219,8 +247,10 @@ async def tournament_run(request: Request, req: TournamentRunRequest):
             n_samples=req.n_samples,
         )
 
-        def _serialize_entry(e):
-            return {
+        annotations = result.accuracy_annotations or {}
+
+        def _serialize_entry(e, annotate: bool = False):
+            payload = {
                 "agent_name": e.agent_name,
                 "total_bid": e.total_bid,
                 "margin_pct": e.margin_pct,
@@ -230,11 +260,20 @@ async def tournament_run(request: Request, req: TournamentRunRequest):
                 "estimate": e.estimate,
                 "error": e.error,
             }
+            if annotate:
+                ann = annotations.get(e.agent_name) or {}
+                payload["avg_deviation_pct"] = ann.get("avg_deviation_pct")
+                payload["closed_job_count"] = ann.get("closed_job_count", 0)
+                payload["is_accuracy_flagged"] = ann.get("is_accuracy_flagged", False)
+            return payload
 
         response = {
             "tournament_id": result.tournament_id,
             "entries": [_serialize_entry(e) for e in result.entries],
-            "consensus_entries": [_serialize_entry(e) for e in result.consensus_entries],
+            "consensus_entries": [
+                _serialize_entry(e, annotate=True) for e in result.consensus_entries
+            ],
+            "accuracy_recommended_agent": result.accuracy_recommended_agent,
         }
         # Fire-and-forget wiki enrichment if job_slug provided
         if req.job_slug:
@@ -297,7 +336,7 @@ async def tournament_get(tournament_id: int):
 async def client_profile(client_id: str):
     """Return client profile including ELO scores and win statistics."""
     try:
-        if not re.match(r'^[a-zA-Z0-9_\-]+$', client_id):
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", client_id):
             raise HTTPException(status_code=400, detail="Invalid client_id format")
         profile_path = (_PROFILES_BASE / f"{client_id}.json").resolve()
         if not str(profile_path).startswith(str(_PROFILES_BASE)):
@@ -377,10 +416,12 @@ async def evolve_harness_endpoint(req: EvolveRequest):
 
 # ── Wiki fire-and-forget helpers ─────────────────────────────────────────────
 
+
 async def _wiki_enrich_estimate(job_slug: str, estimate_data: dict) -> None:
     """Fire-and-forget: enrich wiki job page with estimate data."""
     try:
         from backend.agents.wiki_manager import enrich_estimate
+
         await enrich_estimate(job_slug, estimate_data)
     except Exception:
         logging.exception("wiki enrich_estimate failed for %s (non-fatal)", job_slug)
@@ -390,6 +431,7 @@ async def _wiki_enrich_tournament(job_slug: str, tournament_data: dict) -> None:
     """Fire-and-forget: enrich wiki job page with tournament data."""
     try:
         from backend.agents.wiki_manager import enrich_tournament
+
         await enrich_tournament(job_slug, tournament_data)
     except Exception:
         logging.exception("wiki enrich_tournament failed for %s (non-fatal)", job_slug)
@@ -397,10 +439,12 @@ async def _wiki_enrich_tournament(job_slug: str, tournament_data: dict) -> None:
 
 # ── Workspace fire-and-forget helpers ─────────────────────────────────────────
 
+
 async def _ws_log_tournament(response: dict, client_id: str, description: str) -> None:
     """Fire-and-forget: log tournament consensus entries to Google Sheet."""
     try:
         from backend.agents._workspace import log_tournament_to_sheet
+
         await log_tournament_to_sheet(
             tournament_id=response["tournament_id"],
             client_id=client_id or "default",
@@ -415,6 +459,7 @@ async def _ws_notify_tournament_judged(result: dict, client_id: str) -> None:
     """Fire-and-forget: send Gmail notification when a tournament is judged."""
     try:
         from backend.agents._workspace import notify_tournament_judged
+
         await notify_tournament_judged(
             tournament_id=result["tournament_id"],
             client_id=client_id or "default",
@@ -430,8 +475,7 @@ async def _wiki_enrich_scope(job_slug: str, draft_text: str) -> None:
     """Fire-and-forget: update wiki job Scope section with blueprint-extracted draft."""
     try:
         from backend.agents.wiki_manager import enrich_scope_from_blueprint
+
         await enrich_scope_from_blueprint(job_slug, draft_text)
     except Exception:
-        logging.exception(
-            "wiki enrich_scope_from_blueprint failed for %s (non-fatal)", job_slug
-        )
+        logging.exception("wiki enrich_scope_from_blueprint failed for %s (non-fatal)", job_slug)

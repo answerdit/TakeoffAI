@@ -1,7 +1,9 @@
 """Tests for tournament engine — data structures, collapse logic, grid expansion."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from backend.agents.tournament import AgentResult, TournamentResult, _collapse_to_consensus
 
 
@@ -119,7 +121,9 @@ async def test_run_tournament_grid_shape(tmp_path, monkeypatch):
     )
 
     import aiosqlite
+
     from backend.api.main import _CREATE_TABLES
+
     async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
         await db.executescript(_CREATE_TABLES)
         for sql in [
@@ -137,6 +141,7 @@ async def test_run_tournament_grid_shape(tmp_path, monkeypatch):
         new=AsyncMock(return_value=FAKE_ESTIMATE),
     ):
         from backend.agents.tournament import run_tournament
+
         result = await run_tournament(
             description="Build a 10,000 sqft office building in Dallas TX",
             zip_code="75001",
@@ -156,7 +161,9 @@ async def test_run_tournament_n_samples_2(tmp_path, monkeypatch):
     )
 
     import aiosqlite
+
     from backend.api.main import _CREATE_TABLES
+
     async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
         await db.executescript(_CREATE_TABLES)
         for sql in [
@@ -174,6 +181,7 @@ async def test_run_tournament_n_samples_2(tmp_path, monkeypatch):
         new=AsyncMock(return_value=FAKE_ESTIMATE),
     ):
         from backend.agents.tournament import run_tournament
+
         result = await run_tournament(
             description="Build a 10,000 sqft office building in Dallas TX",
             zip_code="75001",
@@ -193,7 +201,9 @@ async def test_run_tournament_entries_have_temperature(tmp_path, monkeypatch):
     )
 
     import aiosqlite
+
     from backend.api.main import _CREATE_TABLES
+
     async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
         await db.executescript(_CREATE_TABLES)
         for sql in [
@@ -211,6 +221,7 @@ async def test_run_tournament_entries_have_temperature(tmp_path, monkeypatch):
         new=AsyncMock(return_value=FAKE_ESTIMATE),
     ):
         from backend.agents.tournament import run_tournament
+
         result = await run_tournament(
             description="Build a 10,000 sqft office building in Dallas TX",
             zip_code="75001",
@@ -219,3 +230,117 @@ async def test_run_tournament_entries_have_temperature(tmp_path, monkeypatch):
 
     temps = {e.temperature for e in result.entries}
     assert temps == {0.3, 0.7, 1.0}
+
+
+@pytest.mark.anyio
+async def test_run_tournament_no_client_id_has_empty_annotations(tmp_path, monkeypatch):
+    """Without a client_id, annotations are empty and recommended_agent is None."""
+    monkeypatch.setattr(
+        "backend.agents.tournament.DB_PATH",
+        str(tmp_path / "test.db"),
+    )
+
+    import aiosqlite
+
+    from backend.api.main import _CREATE_TABLES
+
+    async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
+        await db.executescript(_CREATE_TABLES)
+        for sql in [
+            "ALTER TABLE tournament_entries ADD COLUMN temperature REAL DEFAULT 0.7",
+            "ALTER TABLE tournament_entries ADD COLUMN is_consensus INTEGER DEFAULT 0",
+        ]:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
+        await db.commit()
+
+    with patch(
+        "backend.agents.tournament.run_prebid_calc_with_modifier",
+        new=AsyncMock(return_value=FAKE_ESTIMATE),
+    ):
+        from backend.agents.tournament import run_tournament
+
+        result = await run_tournament(
+            description="Build a 10,000 sqft office building in Dallas TX",
+            zip_code="75001",
+            n_samples=1,
+        )
+
+    assert result.accuracy_annotations == {}
+    assert result.accuracy_recommended_agent is None
+
+
+@pytest.mark.anyio
+async def test_run_tournament_attaches_client_annotations(tmp_path, monkeypatch):
+    """With a client_id and calibration data, annotations flow into TournamentResult."""
+    import json as _json
+
+    monkeypatch.setattr(
+        "backend.agents.tournament.DB_PATH",
+        str(tmp_path / "test.db"),
+    )
+
+    # Point feedback_loop at a tmp profiles dir and pre-seed one client
+    import backend.agents.feedback_loop as fl
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path / "profiles")
+    (tmp_path / "profiles").mkdir()
+    profile = {
+        "client_id": "acme",
+        "created_at": "2026-01-01T00:00:00",
+        "winning_examples": [],
+        "agent_elo": {a: 1000 for a in fl.ALL_AGENTS},
+        "stats": {},
+        "calibration": {
+            "agent_deviation_history": {
+                "conservative": [2.0, 3.0, 2.5],
+                "balanced": [0.5, 0.8, 0.3],
+                "aggressive": [10.0, 9.0, 11.0],
+                "historical_match": [1.0, 1.2, 0.9],
+                "market_beater": [4.0, 3.5, 4.2],
+            },
+            "red_flagged_agents": ["aggressive"],
+        },
+    }
+    (tmp_path / "profiles" / "acme.json").write_text(_json.dumps(profile))
+
+    import aiosqlite
+
+    from backend.api.main import _CREATE_TABLES
+
+    async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
+        await db.executescript(_CREATE_TABLES)
+        for sql in [
+            "ALTER TABLE tournament_entries ADD COLUMN temperature REAL DEFAULT 0.7",
+            "ALTER TABLE tournament_entries ADD COLUMN is_consensus INTEGER DEFAULT 0",
+        ]:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
+        await db.commit()
+
+    with patch(
+        "backend.agents.tournament.run_prebid_calc_with_modifier",
+        new=AsyncMock(return_value=FAKE_ESTIMATE),
+    ):
+        from backend.agents.tournament import run_tournament
+
+        result = await run_tournament(
+            description="Office buildout",
+            zip_code="75001",
+            client_id="acme",
+            n_samples=1,
+        )
+
+    assert result.accuracy_recommended_agent == "balanced"
+    ann = result.accuracy_annotations
+    assert ann["balanced"]["avg_deviation_pct"] == pytest.approx(0.5333, abs=0.01)
+    assert ann["balanced"]["closed_job_count"] == 3
+    assert ann["balanced"]["is_accuracy_flagged"] is False
+    assert ann["aggressive"]["is_accuracy_flagged"] is True
+
+    # Consensus order must remain unchanged by annotation (hybrid rollout rule)
+    assert len(result.consensus_entries) == 5
