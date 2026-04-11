@@ -1,0 +1,213 @@
+{
+  "client_id": "smoketest",
+  "created_at": "2026-04-11T06:28:55.225017+00:00",
+  "winning_examples": [
+    {
+      "agent_name": "historical_match",
+      "total_bid": 20363.48,
+      "estimate_snapshot": {
+        "project_summary": "Kitchen remodel, 120 sqft \u2014 cabinet replacement, new countertops, tile flooring, and standard appliance package. Mid-grade finishes assumed based on description.",
+        "location": "Austin, TX 78701 (CCI ~1.02 relative to national average)",
+        "line_items": [
+          {
+            "description": "Demolition \u2014 remove existing cabinets, countertops, flooring (labor only)",
+            "quantity": 120,
+            "unit": "sqft",
+            "unit_material_cost": 0.0,
+            "unit_labor_cost": 2.75,
+            "total_material": 0.0,
+            "total_labor": 330.0,
+            "subtotal": 330.0
+          },
+          {
+            "description": "Debris haul-off and disposal (dumpster/dump fees)",
+            "quantity": 1,
+            "unit": "LS",
+            "unit_material_cost": 375.0,
+            "unit_labor_cost": 125.0,
+            "total_material": 375.0,
+            "total_labor": 125.0,
+            "subtotal": 500.0
+          },
+          {
+            "description": "Semi-custom base and wall cabinets (approx. 18 LF of run, mid-grade)",
+            "quantity": 18,
+            "unit": "LF",
+            "unit_material_cost": 185.0,
+            "unit_labor_cost": 65.0,
+            "total_material": 3330.0,
+            "total_labor": 1170.0,
+            "subtotal": 4500.0
+          },
+          {
+            "description": "Quartz countertops \u2014 fabrication and installation (approx. 28 SF slab area)",
+            "quantity": 28,
+            "unit": "sqft",
+            "unit_material_cost": 62.0,
+            "unit_labor_cost": 18.0,
+            "total_material": 1736.0,
+            "total_labor": 504.0,
+            "subtotal": 2240.0
+          },
+          {
+            "description": "Porcelain tile flooring \u2014 material (12x24, mid-grade, 120 SF + 10% waste)",
+            "quantity": 132,
+            "unit": "sqft",
+            "unit_material_cost": 3.25,
+            "unit_labor_cost": 0.0,
+            "total_material": 429.0,
+            "total_labor": 0.0,
+            "subtotal": 429.0
+          },
+          {
+            "description": "Tile floor installation \u2014 labor, thinset, grout, backer board",
+            "quantity": 120,
+            "unit": "sqft",
+            "unit_material_cost": 1.85,
+            "unit_labor_cost": 6.5,
+            "total_material": 222.0,
+            "total_labor": 780.0,
+            "subtotal": 1002.0
+          },
+          {
+            "description": "Cement backer board (1/4\") for tile substrate",
+            "quantity": 120,
+            "unit": "sqft",
+            "unit_material_cost": 0.72,
+            "unit_labor_cost": 0.45,
+            "total_material": 86.4,
+            "total_labor": 54.0,
+            "subtotal": 140.4
+          },
+          {
+            "description": "Standard appliance package \u2014 range, dishwasher, microwave hood (supply only, mid-grade)",
+            "quantity": 1,
+            "unit": "LS",
+            "unit_material_cost": 3200.0,
+            "unit_labor_cost": 0.0,
+            "total_material": 3200.0,
+            "total_labor": 0.0,
+            "subtotal": 3200.0
+          },
+          {
+            "description": "Appliance installation \u2014 range, dishwasher, microwave (labor)",
+            "quantity": 1,
+            "unit": "LS",
+            "unit_material_cost": 0.0,
+            "unit_labor_cost": 425.0,
+            "total_material": 0.0,
+            "total_labor": 425.0,
+            "subtotal": 425.0
+          },
+          {
+            "description": "Plumbing \u2014 reconnect sink, faucet supply/drain, new kitchen faucet (mid-grade)",
+            "quantity": 1,
+            "unit": "LS",
+            "unit_material_cost": 285.0,
+            "unit_labor_cost": 320.0,
+            "total_material": 285.0,
+            "total_labor": 320.0,
+            "subtotal": 605.0
+          },
+          {
+            "description": "Electrical \u2014 reconnect dishwasher circuit, GFCI outlets, under-cabinet lighting rough-in",
+            "quantity": 1,
+            "unit": "LS",
+            "unit_material_cost": 195.0,
+            "unit_labor_cost": 480.0,
+            "total_material": 195.0,
+            "total_labor": 480.0,
+            "subtotal": 675.0
+          },
+          {
+            "description": "Drywall patching and prep (cabinet removal voids, minor repairs)",
+            "quantity": 80,
+            "unit": "sqft",
+            "unit_material_cost": 0.55,
+            "unit_labor_cost": 1.2,
+            "total_material": 44.0,
+            "total_labor": 96.0,
+            "subtotal": 140.0
+          },
+          {
+            "description": "Interior latex paint \u2014 walls and ceiling (2 coats, primer included)",
+            "quantity": 120,
+            "unit": "sqft",
+            "unit_material_cost": 0.65,
+            "unit_labor_cost": 1.1,
+            "total_material": 78.0,
+            "total_labor": 132.0,
+            "subtotal": 210.0
+          },
+          {
+            "description": "Undermount stainless steel sink (mid-grade, supply only)",
+            "quantity": 1,
+            "unit": "EA",
+            "unit_material_cost": 320.0,
+            "unit_labor_cost": 0.0,
+            "total_material": 320.0,
+            "total_labor": 0.0,
+            "subtotal": 320.0
+          },
+          {
+            "description": "Cabinet hardware \u2014 pulls and knobs (allowance)",
+            "quantity": 1,
+            "unit": "LS",
+            "unit_material_cost": 175.0,
+            "unit_labor_cost": 75.0,
+            "total_material": 175.0,
+            "total_labor": 75.0,
+            "subtotal": 250.0
+          },
+          {
+            "description": "Miscellaneous materials \u2014 caulk, fasteners, adhesives, trim",
+            "quantity": 1,
+            "unit": "LS",
+            "unit_material_cost": 185.0,
+            "unit_labor_cost": 0.0,
+            "total_material": 185.0,
+            "total_labor": 0.0,
+            "subtotal": 185.0
+          }
+        ],
+        "subtotal": 15151.4,
+        "overhead_pct": 20,
+        "overhead_amount": 3030.28,
+        "margin_pct": 12,
+        "margin_amount": 2181.8,
+        "total_bid": 20363.48,
+        "estimate_low": 17800.0,
+        "estimate_high": 23500.0,
+        "confidence": "medium",
+        "notes": "CCI of 1.02 applied for Austin, TX 78701 \u2014 a moderately high-cost metro. Appliance package is supply-only allowance; owner may supply own appliances to reduce cost. Cabinet pricing assumes semi-custom box cabinets (not fully custom). Countertop assumes quartz; granite or laminate would shift cost \u00b115%. Estimate does not include permit fees (typically $150\u2013$400 for Austin kitchen remodel), structural modifications, window/door changes, or refrigerator. Labor rates reflect Austin market with a 1.40x burden multiplier on base wages. Confidence is medium due to assumed finishes and scope \u2014 a site visit would tighten the range."
+      },
+      "timestamp": "2026-04-11T06:28:55.225100+00:00"
+    }
+  ],
+  "agent_elo": {
+    "conservative": 992,
+    "balanced": 992,
+    "aggressive": 992,
+    "historical_match": 1032,
+    "market_beater": 992
+  },
+  "stats": {
+    "total_tournaments": 1,
+    "win_rate_by_agent": {
+      "conservative": 0.0,
+      "balanced": 0.0,
+      "aggressive": 0.0,
+      "historical_match": 1.0,
+      "market_beater": 0.0
+    },
+    "avg_winning_bid": 20363.48,
+    "avg_winning_margin": 12.0,
+    "wins_by_agent": {
+      "conservative": 0,
+      "balanced": 0,
+      "aggressive": 0,
+      "historical_match": 1,
+      "market_beater": 0
+    }
+  }
+}
