@@ -43,6 +43,61 @@ Price tracking for flagged construction materials.
 
 ---
 
+## Tags
+
+Each page type should include `tags` in its frontmatter:
+
+| Page type | Required tags | Optional tags |
+|---|---|---|
+| Job | `job`, `{status}` | `{trade_type}` |
+| Client | `client` | — |
+| Personality | `personality` | `red-flag` (if win_rate < 0.2) |
+| Material | `material` | `price-flag` (if deviation_pct > 5) |
+
+Example job frontmatter:
+```yaml
+tags:
+  - job
+  - estimated
+  - electrical
+```
+
+---
+
+## Callouts
+
+Use Obsidian callouts for at-a-glance scanning in reading view.
+
+### Price flag callouts (use in material and job pages)
+```markdown
+> [!warning] Price Deviation: +18%
+> Verified mid-market price is $4.20/LF vs. AI seed of $3.55/LF. Flag for review.
+```
+Use `[!warning]` for deviations ≥ 10%, `[!caution]` for 5–9%.
+
+### Personality strategy (use in Philosophy section)
+```markdown
+> [!abstract] Bidding Strategy
+> Strategy description and bullet rules here.
+```
+
+### Bid risk notes (use in Bid Decision and Outcome sections)
+```markdown
+> [!tip] Risk Assessment
+> Band spread is tight — high confidence in this number.
+
+> [!danger] Underbid Risk
+> Our bid of $X is below the band_low of $Y — investigate before submitting.
+```
+
+---
+
+## Dashboard Note
+
+`DASHBOARD.md` uses `dataview` query blocks. These require the **Dataview** community plugin in Obsidian. Without it, the queries render as raw code blocks.
+
+---
+
 ## Rules
 
 1. **Frontmatter is structured data.** All monetary values are raw numbers (no `$` prefix). Dates use ISO 8601 format (YYYY-MM-DD or full datetime).
@@ -51,3 +106,4 @@ Price tracking for flagged construction materials.
 4. **Section ordering is fixed.** Scope always first, Links always last, chronological sections in between.
 5. **Body text is narrative.** Write for a contractor reviewing their bidding history. Be specific about dollar amounts, percentages, agent names, and dates. Avoid generic language.
 6. **Cross-reference liberally.** Link to related job, client, personality, and material pages wherever relevant.
+7. **Use callouts for flagged data.** Price deviations, bid risks, and underbid warnings must use the callout patterns above — not plain prose.

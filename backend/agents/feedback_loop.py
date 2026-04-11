@@ -4,11 +4,24 @@ Tracks client bid history, agent ELO scores, and win statistics.
 """
 
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from backend.agents._db import _configure_conn
 from backend.config import settings
+
+_profile_locks: dict[str, threading.Lock] = {}
+_locks_mu = threading.Lock()
+
+
+def _profile_lock(client_id: str) -> threading.Lock:
+    with _locks_mu:
+        if client_id not in _profile_locks:
+            _profile_locks[client_id] = threading.Lock()
+        return _profile_locks[client_id]
+
 
 PROFILES_DIR = Path(__file__).parent.parent / "data" / "client_profiles"
 DB_PATH = settings.db_path
@@ -52,73 +65,74 @@ def update_client_profile(client_id: str, winner_entry: dict) -> dict:
     Returns the updated profile dict.
     """
     path = _profile_path(client_id)
-    profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
+    with _profile_lock(client_id):
+        profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
 
-    winner_agent = winner_entry.get("agent_name", "")
-    total_bid = float(winner_entry.get("total_bid", 0.0))
+        winner_agent = winner_entry.get("agent_name", "")
+        total_bid = float(winner_entry.get("total_bid", 0.0))
 
-    # Decode line_items_json — the DB column stores the full estimate as JSON string
-    raw_li = winner_entry.get("line_items_json", "{}")
-    if isinstance(raw_li, str):
-        try:
-            estimate_snapshot = json.loads(raw_li)
-        except Exception:
-            estimate_snapshot = {}
-    else:
-        estimate_snapshot = raw_li or {}
-
-    # Append winning example
-    example = {
-        "agent_name": winner_agent,
-        "total_bid": total_bid,
-        "estimate_snapshot": estimate_snapshot,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    profile["winning_examples"].append(example)
-    if len(profile["winning_examples"]) > MAX_WINNING_EXAMPLES:
-        profile["winning_examples"] = profile["winning_examples"][-MAX_WINNING_EXAMPLES:]
-
-    # ELO update
-    elo = profile.setdefault("agent_elo", {a: 1000 for a in ALL_AGENTS})
-    for agent in ALL_AGENTS:
-        current = elo.get(agent, 1000)
-        if agent == winner_agent:
-            elo[agent] = current + ELO_WIN_DELTA
+        # Decode line_items_json — the DB column stores the full estimate as JSON string
+        raw_li = winner_entry.get("line_items_json", "{}")
+        if isinstance(raw_li, str):
+            try:
+                estimate_snapshot = json.loads(raw_li)
+            except Exception:
+                estimate_snapshot = {}
         else:
-            elo[agent] = max(0, current + ELO_LOSE_DELTA)
+            estimate_snapshot = raw_li or {}
 
-    # Stats update
-    stats = profile.setdefault("stats", {
-        "total_tournaments": 0,
-        "win_rate_by_agent": {a: 0.0 for a in ALL_AGENTS},
-        "avg_winning_bid": 0.0,
-        "avg_winning_margin": 0.0,
-        "wins_by_agent": {a: 0 for a in ALL_AGENTS},
-    })
-    stats["total_tournaments"] = stats.get("total_tournaments", 0) + 1
+        # Append winning example
+        example = {
+            "agent_name": winner_agent,
+            "total_bid": total_bid,
+            "estimate_snapshot": estimate_snapshot,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        profile["winning_examples"].append(example)
+        if len(profile["winning_examples"]) > MAX_WINNING_EXAMPLES:
+            profile["winning_examples"] = profile["winning_examples"][-MAX_WINNING_EXAMPLES:]
 
-    wins_by_agent = stats.setdefault("wins_by_agent", {a: 0 for a in ALL_AGENTS})
-    wins_by_agent[winner_agent] = wins_by_agent.get(winner_agent, 0) + 1
+        # ELO update
+        elo = profile.setdefault("agent_elo", {a: 1000 for a in ALL_AGENTS})
+        for agent in ALL_AGENTS:
+            current = elo.get(agent, 1000)
+            if agent == winner_agent:
+                elo[agent] = current + ELO_WIN_DELTA
+            else:
+                elo[agent] = max(0, current + ELO_LOSE_DELTA)
 
-    total = stats["total_tournaments"]
-    stats["win_rate_by_agent"] = {
-        agent: round(wins_by_agent.get(agent, 0) / total, 4)
-        for agent in ALL_AGENTS
-    }
+        # Stats update
+        stats = profile.setdefault("stats", {
+            "total_tournaments": 0,
+            "win_rate_by_agent": {a: 0.0 for a in ALL_AGENTS},
+            "avg_winning_bid": 0.0,
+            "avg_winning_margin": 0.0,
+            "wins_by_agent": {a: 0 for a in ALL_AGENTS},
+        })
+        stats["total_tournaments"] = stats.get("total_tournaments", 0) + 1
 
-    # Rolling averages across winning_examples window
-    examples = profile["winning_examples"]
-    bids = [e["total_bid"] for e in examples if e.get("total_bid")]
-    stats["avg_winning_bid"] = round(sum(bids) / len(bids), 2) if bids else 0.0
+        wins_by_agent = stats.setdefault("wins_by_agent", {a: 0 for a in ALL_AGENTS})
+        wins_by_agent[winner_agent] = wins_by_agent.get(winner_agent, 0) + 1
 
-    margins = [
-        float(e["estimate_snapshot"]["margin_pct"])
-        for e in examples
-        if isinstance(e.get("estimate_snapshot"), dict) and e["estimate_snapshot"].get("margin_pct") is not None
-    ]
-    stats["avg_winning_margin"] = round(sum(margins) / len(margins), 4) if margins else 0.0
+        total = stats["total_tournaments"]
+        stats["win_rate_by_agent"] = {
+            agent: round(wins_by_agent.get(agent, 0) / total, 4)
+            for agent in ALL_AGENTS
+        }
 
-    path.write_text(json.dumps(profile, indent=2))
+        # Rolling averages across winning_examples window
+        examples = profile["winning_examples"]
+        bids = [e["total_bid"] for e in examples if e.get("total_bid")]
+        stats["avg_winning_bid"] = round(sum(bids) / len(bids), 2) if bids else 0.0
+
+        margins = [
+            float(e["estimate_snapshot"]["margin_pct"])
+            for e in examples
+            if isinstance(e.get("estimate_snapshot"), dict) and e["estimate_snapshot"].get("margin_pct") is not None
+        ]
+        stats["avg_winning_margin"] = round(sum(margins) / len(margins), 4) if margins else 0.0
+
+        path.write_text(json.dumps(profile, indent=2))
     return profile
 
 
@@ -135,54 +149,55 @@ def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
     Returns the updated profile.
     """
     path = _profile_path(client_id)
-    profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
+    with _profile_lock(client_id):
+        profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
 
-    winning_bids = [b for b in bids if b.get("won")]
+        winning_bids = [b for b in bids if b.get("won")]
 
-    for bid in winning_bids:
-        project_name = bid.get("project_name", "")
-        description = bid.get("description", "")
-        summary = f"{project_name} — {description}".strip(" —") if description else project_name
+        for bid in winning_bids:
+            project_name = bid.get("project_name", "")
+            description = bid.get("description", "")
+            summary = f"{project_name} — {description}".strip(" —") if description else project_name
 
-        example = {
-            "agent_name": "upload",
-            "total_bid": float(bid.get("your_bid_amount", 0)),
-            "estimate_snapshot": {
-                "project_summary": summary,
-                "location": bid.get("location", ""),
-                "trade_type": bid.get("trade_type", "general"),
-                "winning_bid_amount": bid.get("winning_bid_amount"),
-                "actual_cost": bid.get("actual_cost"),
-                "notes": bid.get("notes", ""),
-            },
-            "timestamp": bid.get("bid_date", datetime.now(timezone.utc).isoformat()),
-            "source": "upload",
-        }
-        profile["winning_examples"].append(example)
+            example = {
+                "agent_name": "upload",
+                "total_bid": float(bid.get("your_bid_amount", 0)),
+                "estimate_snapshot": {
+                    "project_summary": summary,
+                    "location": bid.get("location", ""),
+                    "trade_type": bid.get("trade_type", "general"),
+                    "winning_bid_amount": bid.get("winning_bid_amount"),
+                    "actual_cost": bid.get("actual_cost"),
+                    "notes": bid.get("notes", ""),
+                },
+                "timestamp": bid.get("bid_date", datetime.now(timezone.utc).isoformat()),
+                "source": "upload",
+            }
+            profile["winning_examples"].append(example)
 
-    if len(profile["winning_examples"]) > MAX_WINNING_EXAMPLES:
-        profile["winning_examples"] = profile["winning_examples"][-MAX_WINNING_EXAMPLES:]
+        if len(profile["winning_examples"]) > MAX_WINNING_EXAMPLES:
+            profile["winning_examples"] = profile["winning_examples"][-MAX_WINNING_EXAMPLES:]
 
-    # Update upload-specific counters (separate from tournament stats)
-    upload_stats = profile.setdefault("upload_stats", {
-        "total_uploaded": 0,
-        "total_won_uploaded": 0,
-    })
-    upload_stats["total_uploaded"] = upload_stats.get("total_uploaded", 0) + len(bids)
-    upload_stats["total_won_uploaded"] = upload_stats.get("total_won_uploaded", 0) + len(winning_bids)
+        # Update upload-specific counters (separate from tournament stats)
+        upload_stats = profile.setdefault("upload_stats", {
+            "total_uploaded": 0,
+            "total_won_uploaded": 0,
+        })
+        upload_stats["total_uploaded"] = upload_stats.get("total_uploaded", 0) + len(bids)
+        upload_stats["total_won_uploaded"] = upload_stats.get("total_won_uploaded", 0) + len(winning_bids)
 
-    # Recalculate avg_winning_bid across all winning_examples (tournaments + uploads)
-    stats = profile.setdefault("stats", {
-        "total_tournaments": 0,
-        "win_rate_by_agent": {a: 0.0 for a in ALL_AGENTS},
-        "avg_winning_bid": 0.0,
-        "avg_winning_margin": 0.0,
-        "wins_by_agent": {a: 0 for a in ALL_AGENTS},
-    })
-    all_bids = [e["total_bid"] for e in profile["winning_examples"] if e.get("total_bid")]
-    stats["avg_winning_bid"] = round(sum(all_bids) / len(all_bids), 2) if all_bids else 0.0
+        # Recalculate avg_winning_bid across all winning_examples (tournaments + uploads)
+        stats = profile.setdefault("stats", {
+            "total_tournaments": 0,
+            "win_rate_by_agent": {a: 0.0 for a in ALL_AGENTS},
+            "avg_winning_bid": 0.0,
+            "avg_winning_margin": 0.0,
+            "wins_by_agent": {a: 0 for a in ALL_AGENTS},
+        })
+        all_bids = [e["total_bid"] for e in profile["winning_examples"] if e.get("total_bid")]
+        stats["avg_winning_bid"] = round(sum(all_bids) / len(all_bids), 2) if all_bids else 0.0
 
-    path.write_text(json.dumps(profile, indent=2))
+        path.write_text(json.dumps(profile, indent=2))
     return profile
 
 
@@ -269,6 +284,7 @@ async def record_actual_outcome(
     import aiosqlite
 
     async with aiosqlite.connect(DB_PATH) as db:
+        await _configure_conn(db)
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT agent_name, total_bid FROM tournament_entries WHERE tournament_id = ?",
@@ -280,55 +296,56 @@ async def record_actual_outcome(
         raise ValueError(f"No entries found for tournament {tournament_id}")
 
     path = _profile_path(client_id)
-    profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
+    with _profile_lock(client_id):
+        profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
 
-    # Initialise calibration block if absent
-    cal = profile.setdefault("calibration", {
-        "win_prob_predictions": [],
-        "win_prob_actuals": [],
-        "brier_score": None,
-        "confidence_accuracy": {},
-        "agent_deviation_history": {agent: [] for agent in ALL_AGENTS},
-        "red_flagged_agents": [],
-    })
-    cal.setdefault("agent_deviation_history", {agent: [] for agent in ALL_AGENTS})
-    cal.setdefault("red_flagged_agents", [])
+        # Initialise calibration block if absent
+        cal = profile.setdefault("calibration", {
+            "win_prob_predictions": [],
+            "win_prob_actuals": [],
+            "brier_score": None,
+            "confidence_accuracy": {},
+            "agent_deviation_history": {agent: [] for agent in ALL_AGENTS},
+            "red_flagged_agents": [],
+        })
+        cal.setdefault("agent_deviation_history", {agent: [] for agent in ALL_AGENTS})
+        cal.setdefault("red_flagged_agents", [])
 
-    # Compute per-agent deviation
-    for entry in entries:
-        agent = entry["agent_name"]
-        bid = float(entry.get("total_bid") or 0.0)
-        if actual_cost > 0 and bid > 0:
-            dev = round((bid - actual_cost) / actual_cost * 100, 4)
-        else:
-            dev = 0.0
-        history = cal["agent_deviation_history"].setdefault(agent, [])
-        history.append(dev)
-        # Keep only last RED_FLAG_LOOKBACK entries
-        cal["agent_deviation_history"][agent] = history[-RED_FLAG_LOOKBACK:]
-
-    # Red-flag agents
-    red_flagged = set(cal.get("red_flagged_agents", []))
-    for agent in ALL_AGENTS:
-        history = cal["agent_deviation_history"].get(agent, [])
-        if len(history) >= RED_FLAG_LOOKBACK:
-            avg_dev = sum(abs(d) for d in history) / len(history)
-            if avg_dev > RED_FLAG_DEVIATION_THRESHOLD:
-                red_flagged.add(agent)
+        # Compute per-agent deviation
+        for entry in entries:
+            agent = entry["agent_name"]
+            bid = float(entry.get("total_bid") or 0.0)
+            if actual_cost > 0 and bid > 0:
+                dev = round((bid - actual_cost) / actual_cost * 100, 4)
             else:
-                red_flagged.discard(agent)
-    cal["red_flagged_agents"] = sorted(red_flagged)
+                dev = 0.0
+            history = cal["agent_deviation_history"].setdefault(agent, [])
+            history.append(dev)
+            # Keep only last RED_FLAG_LOOKBACK entries
+            cal["agent_deviation_history"][agent] = history[-RED_FLAG_LOOKBACK:]
 
-    # Win probability calibration
-    if win_probability is not None:
-        cal["win_prob_predictions"].append(float(win_probability))
-        cal["win_prob_actuals"].append(1 if won else 0)
-    cal["brier_score"] = _compute_brier_score(
-        cal["win_prob_predictions"],
-        cal["win_prob_actuals"],
-    )
+        # Red-flag agents
+        red_flagged = set(cal.get("red_flagged_agents", []))
+        for agent in ALL_AGENTS:
+            history = cal["agent_deviation_history"].get(agent, [])
+            if len(history) >= RED_FLAG_LOOKBACK:
+                avg_dev = sum(abs(d) for d in history) / len(history)
+                if avg_dev > RED_FLAG_DEVIATION_THRESHOLD:
+                    red_flagged.add(agent)
+                else:
+                    red_flagged.discard(agent)
+        cal["red_flagged_agents"] = sorted(red_flagged)
 
-    path.write_text(json.dumps(profile, indent=2))
+        # Win probability calibration
+        if win_probability is not None:
+            cal["win_prob_predictions"].append(float(win_probability))
+            cal["win_prob_actuals"].append(1 if won else 0)
+        cal["brier_score"] = _compute_brier_score(
+            cal["win_prob_predictions"],
+            cal["win_prob_actuals"],
+        )
+
+        path.write_text(json.dumps(profile, indent=2))
     return profile
 
 
@@ -383,11 +400,12 @@ def exclude_agent(client_id: str, agent_name: str) -> dict:
     Returns updated profile.
     """
     path = _profile_path(client_id)
-    profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
-    excluded = profile.setdefault("excluded_agents", [])
-    if agent_name not in excluded:
-        excluded.append(agent_name)
-    path.write_text(json.dumps(profile, indent=2))
+    with _profile_lock(client_id):
+        profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
+        excluded = profile.setdefault("excluded_agents", [])
+        if agent_name not in excluded:
+            excluded.append(agent_name)
+        path.write_text(json.dumps(profile, indent=2))
     return profile
 
 
@@ -398,20 +416,21 @@ def reset_agent_history(client_id: str, agent_name: str) -> dict:
     Returns updated calibration block.
     """
     path = _profile_path(client_id)
-    profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
+    with _profile_lock(client_id):
+        profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
 
-    cal = profile.setdefault("calibration", {
-        "win_prob_predictions": [],
-        "win_prob_actuals": [],
-        "brier_score": None,
-        "confidence_accuracy": {},
-        "agent_deviation_history": {a: [] for a in ALL_AGENTS},
-        "red_flagged_agents": [],
-    })
-    cal.setdefault("agent_deviation_history", {})[agent_name] = []
-    red_flagged = cal.setdefault("red_flagged_agents", [])
-    if agent_name in red_flagged:
-        red_flagged.remove(agent_name)
+        cal = profile.setdefault("calibration", {
+            "win_prob_predictions": [],
+            "win_prob_actuals": [],
+            "brier_score": None,
+            "confidence_accuracy": {},
+            "agent_deviation_history": {a: [] for a in ALL_AGENTS},
+            "red_flagged_agents": [],
+        })
+        cal.setdefault("agent_deviation_history", {})[agent_name] = []
+        red_flagged = cal.setdefault("red_flagged_agents", [])
+        if agent_name in red_flagged:
+            red_flagged.remove(agent_name)
 
-    path.write_text(json.dumps(profile, indent=2))
+        path.write_text(json.dumps(profile, indent=2))
     return profile.get("calibration", {})

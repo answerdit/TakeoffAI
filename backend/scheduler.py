@@ -55,6 +55,13 @@ async def run_verification_batch(triggered_by: str = "on_demand") -> dict:
     records = await verify_line_items(line_items, triggered_by=triggered_by)
     elapsed = (datetime.now(timezone.utc) - triggered_at).total_seconds()
 
+    # Log flagged items to Google Sheet (no-op if GWS_ENABLED is False)
+    try:
+        from backend.agents._workspace import log_price_audit_to_sheet
+        await log_price_audit_to_sheet(records)
+    except Exception:
+        logger.exception("log_price_audit_to_sheet failed (non-fatal)")
+
     return {
         "status": "complete",
         "items_checked": len(records),

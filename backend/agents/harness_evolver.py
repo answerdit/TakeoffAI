@@ -6,6 +6,7 @@ to git — rollback and fork are native git operations.
 """
 
 import asyncio
+import difflib
 import json
 import os
 import re
@@ -15,7 +16,7 @@ from pathlib import Path
 MIN_TOURNAMENTS = 10
 DOMINANCE_THRESHOLD = 0.60
 HARNESS_EVOLVER_MODEL = os.getenv("HARNESS_EVOLVER_MODEL", "claude-sonnet-4-6")
-HARNESS_EVOLVER_MAX_TOOL_CALLS = int(os.getenv("HARNESS_EVOLVER_MAX_TOOL_CALLS", "30"))
+HARNESS_EVOLVER_MAX_TOOL_CALLS = int(os.getenv("HARNESS_EVOLVER_MAX_TOOL_CALLS", "15"))
 
 TOURNAMENT_PY = Path(__file__).parent / "tournament.py"
 
@@ -82,7 +83,7 @@ def check_dominance(client_id: str) -> bool:
 def _git_commit(repo_root: Path, tournament_py: Path, commit_msg: str) -> str | None:
     try:
         subprocess.run(["git", "add", str(tournament_py)], cwd=repo_root, check=True)
-        subprocess.run(["git", "commit", "-m", commit_msg], cwd=repo_root, check=True)
+        subprocess.run(["git", "commit", str(tournament_py), "-m", commit_msg], cwd=repo_root, check=True)
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
@@ -137,7 +138,7 @@ _TOOLS = [
 ]
 
 
-def _handle_list_traces(
+async def _handle_list_traces(
     data_dir: Path,
     client_id: str,
     agent_name: str | None = None,
@@ -153,7 +154,7 @@ def _handle_list_traces(
     results = []
     for f in files:
         try:
-            meta = json.loads(f.read_text())
+            meta = json.loads(await asyncio.to_thread(f.read_text))
             if meta.get("client_id") != client_id:
                 continue
             results.append({
@@ -170,15 +171,15 @@ def _handle_list_traces(
     return results
 
 
-def _handle_read_file(data_dir: Path, path: str) -> dict:
+async def _handle_read_file(data_dir: Path, path: str) -> dict:
     """Read a file inside data_dir. Returns error dict if path is outside or missing."""
     try:
         p = Path(path)
         target = (data_dir / p).resolve() if not p.is_absolute() else p.resolve()
         allowed = data_dir.resolve()
-        if not str(target).startswith(str(allowed)):
+        if not target.is_relative_to(allowed):
             return {"error": f"Access denied: path must be under {allowed}"}
-        content = target.read_text()
+        content = await asyncio.to_thread(target.read_text)
         try:
             return json.loads(content)
         except json.JSONDecodeError:
@@ -200,7 +201,7 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _run_agentic_proposer(
+async def _run_agentic_proposer(
     *,
     data_dir: Path,
     client_id: str,
@@ -225,7 +226,7 @@ def _run_agentic_proposer(
         "then propose improved personality prompts."
     )
 
-    client = anthropic.Anthropic()
+    client = anthropic.AsyncAnthropic()
     messages: list[dict] = [{"role": "user", "content": initial_message}]
     forced = False
     tool_call_count = 0
@@ -243,7 +244,7 @@ def _run_agentic_proposer(
         elif tool_call_count < HARNESS_EVOLVER_MAX_TOOL_CALLS:
             kwargs["tools"] = _TOOLS
 
-        response = client.messages.create(**kwargs)
+        response = await client.messages.create(**kwargs)
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason == "end_turn":
@@ -258,9 +259,9 @@ def _run_agentic_proposer(
                 if block.type == "tool_use":
                     tool_call_count += 1
                     if block.name == "list_traces":
-                        result = _handle_list_traces(data_dir, **block.input)
+                        result = await _handle_list_traces(data_dir, **block.input)
                     elif block.name == "read_file":
-                        result = _handle_read_file(data_dir, block.input["path"])
+                        result = await _handle_read_file(data_dir, block.input["path"])
                     else:
                         result = {"error": f"Unknown tool: {block.name}"}
 
@@ -288,12 +289,15 @@ def _run_agentic_proposer(
             )
 
 
-async def evolve_harness(client_id: str) -> dict:
+async def evolve_harness(client_id: str, dry_run: bool = False) -> dict:
     """
     Read client diagnostic context, call Claude to propose improved prompts
     for underperforming agents, apply changes to tournament.py, and git commit.
 
-    Returns a result dict with status: 'evolved' | 'skipped' | 'locked'.
+    dry_run=True: run the full agentic analysis and return proposed diffs without
+    writing tournament.py or committing to git. Safe to call from CI or previews.
+
+    Returns a result dict with status: 'evolved' | 'dry_run' | 'skipped' | 'locked'.
     Raises ValueError on bad Claude response.
     """
     lock = _get_lock()
@@ -331,8 +335,7 @@ async def evolve_harness(client_id: str) -> dict:
         # ── Call Claude (agentic loop) ────────────────────────────────────────
         from backend.agents.feedback_loop import _profile_path as _fp
         data_dir = TOURNAMENT_PY.parent.parent / "data"
-        raw = await asyncio.to_thread(
-            _run_agentic_proposer,
+        raw = await _run_agentic_proposer(
             data_dir=data_dir,
             client_id=client_id,
             underperforming=underperforming,
@@ -361,10 +364,29 @@ async def evolve_harness(client_id: str) -> dict:
             raise ValueError(f"Claude returned no valid agent keys: {list(proposed.keys())}")
 
         # ── Apply to tournament.py ────────────────────────────────────────────
-        source = TOURNAMENT_PY.read_text()
+        original_source = TOURNAMENT_PY.read_text()
+        new_source = original_source
         for agent_name, new_prompt in valid_proposed.items():
-            source = _replace_prompt_in_source(source, agent_name, new_prompt)
-        TOURNAMENT_PY.write_text(source)
+            new_source = _replace_prompt_in_source(new_source, agent_name, new_prompt)
+
+        if dry_run:
+            # Compute unified diff without touching the filesystem or git.
+            diff_lines = list(difflib.unified_diff(
+                original_source.splitlines(keepends=True),
+                new_source.splitlines(keepends=True),
+                fromfile="tournament.py (current)",
+                tofile="tournament.py (proposed)",
+            ))
+            return {
+                "status": "dry_run",
+                "evolved_agents": list(valid_proposed.keys()),
+                "dominant_agent": dominant_agent,
+                "dominant_win_rate": dominant_rate,
+                "proposed_prompts": valid_proposed,
+                "diff": "".join(diff_lines),
+            }
+
+        TOURNAMENT_PY.write_text(new_source)
 
         # ── Git commit ────────────────────────────────────────────────────────
         gen = await asyncio.to_thread(_get_generation_number) + 1

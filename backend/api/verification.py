@@ -12,6 +12,7 @@ import aiosqlite
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.agents._db import _configure_conn
 from backend.agents.feedback_loop import get_agent_accuracy_report, record_actual_outcome
 from backend.agents.price_verifier import verify_line_items, _update_seed_csv
 from backend.api.validators import validate_client_id
@@ -94,6 +95,7 @@ async def list_audit(
         params.append(limit)
 
         async with aiosqlite.connect(DB_PATH) as db:
+            await _configure_conn(db)
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 f"SELECT * FROM price_audit {where} ORDER BY created_at DESC LIMIT ?",
@@ -111,6 +113,7 @@ async def list_queue(status: Optional[str] = "pending", limit: int = 100):
     """List review queue items."""
     try:
         async with aiosqlite.connect(DB_PATH) as db:
+            await _configure_conn(db)
             db.row_factory = aiosqlite.Row
             if status:
                 async with db.execute(
@@ -136,6 +139,7 @@ async def resolve_queue_item(queue_id: int, req: QueueResolveRequest):
     try:
         resolved_at = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(DB_PATH) as db:
+            await _configure_conn(db)
             db.row_factory = aiosqlite.Row
 
             # Load queue item joined with audit for verified prices

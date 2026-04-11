@@ -6,35 +6,39 @@
   <title>TakeoffAI — User Guide</title>
   <style>
     :root {
-      --bg:           #0a0a0a;
-      --bg-card:      #111111;
-      --bg-input:     #1a1a1a;
-      --border:       #2a2a2a;
-      --amber:        #f59e0b;
-      --amber-dim:    #b45309;
-      --amber-glow:   #f59e0b22;
-      --text:         #e5e5e5;
-      --text-muted:   #6b7280;
-      --text-dim:     #9ca3af;
+      --bg:           #15181e;
+      --bg-card:      #1c2028;
+      --bg-input:     #0d0e12;
+      --border:       rgba(97, 104, 117, 0.35);
+      --border-solid: rgb(97, 104, 117);
+      --border-focus: #1060ff;
+      --amber:        #1060ff;
+      --amber-dim:    #0a4ad6;
+      --amber-glow:   rgba(16, 96, 255, 0.08);
+      --text:         #efeff1;
+      --text-muted:   #656a76;
+      --text-dim:     #d5d7db;
       --green:        #22c55e;
       --red:          #ef4444;
-      --radius:       8px;
-      --radius-lg:    12px;
+      --radius:       5px;
+      --radius-lg:    8px;
+      --shadow:       rgba(97, 104, 117, 0.05) 0px 1px 1px,
+                      rgba(97, 104, 117, 0.05) 0px 2px 2px;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
-      line-height: 1.7;
+      line-height: 1.63;
     }
 
     /* ── Header ─────────────────────────────────────────────────── */
     header {
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid rgba(97, 104, 117, 0.25);
       padding: 0 2rem;
       display: flex;
       align-items: center;
@@ -42,14 +46,15 @@
       height: 64px;
       position: sticky;
       top: 0;
-      background: var(--bg);
+      background: #15181e;
       z-index: 100;
+      box-shadow: var(--shadow);
     }
 
     .logo { display: flex; align-items: baseline; gap: 10px; }
-    .logo-name { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em; color: var(--amber); }
-    .logo-name span { color: var(--text); }
-    .logo-by { font-size: 0.78rem; color: var(--text-muted); letter-spacing: 0.02em; }
+    .logo-name { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+    .logo-name span { color: var(--amber); }
+    .logo-by { font-size: 0.75rem; color: var(--text-muted); letter-spacing: 0.04em; text-transform: uppercase; }
 
     .back-link {
       font-size: 0.82rem;
@@ -58,7 +63,7 @@
       letter-spacing: 0.01em;
       transition: color 0.15s;
     }
-    .back-link:hover { color: var(--amber); }
+    .back-link:hover { color: #2b89ff; }
 
     /* ── Layout ─────────────────────────────────────────────────── */
     .wrapper {
@@ -81,12 +86,13 @@
     }
 
     nav.toc .toc-label {
-      font-size: 0.7rem;
+      font-size: 0.69rem;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.081em;
       color: var(--text-muted);
       font-weight: 600;
       margin-bottom: 0.75rem;
+      line-height: 1.69;
     }
 
     nav.toc a {
@@ -102,8 +108,8 @@
     }
 
     nav.toc a:hover, nav.toc a.active {
-      color: var(--amber);
-      border-left-color: var(--amber);
+      color: #2b89ff;
+      border-left-color: #1060ff;
     }
 
     nav.toc a.sub {
@@ -117,21 +123,24 @@
 
     .version-tag {
       display: inline-block;
-      font-size: 0.72rem;
+      font-size: 0.69rem;
       color: var(--text-muted);
       background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      padding: 2px 10px;
+      border: 1px solid rgba(178, 182, 189, 0.35);
+      border-radius: 5px;
+      padding: 3px 9px;
       margin-bottom: 2rem;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      text-transform: uppercase;
     }
 
     h1 {
       font-size: 2rem;
       font-weight: 700;
-      letter-spacing: -0.03em;
-      color: var(--amber);
+      letter-spacing: -0.02em;
+      color: var(--text);
+      line-height: 1.19;
       margin-bottom: 0.5rem;
     }
 
@@ -139,16 +148,18 @@
       font-size: 1rem;
       color: var(--text-dim);
       margin-bottom: 2.5rem;
+      line-height: 1.5;
     }
 
     h2 {
-      font-size: 1.25rem;
+      font-size: 1.19rem;
       font-weight: 700;
-      color: var(--amber);
+      color: var(--text);
       margin: 3rem 0 1rem;
       padding-top: 1rem;
-      border-top: 1px solid var(--border);
+      border-top: 1px solid rgba(97, 104, 117, 0.25);
       letter-spacing: -0.01em;
+      line-height: 1.21;
     }
 
     h2:first-of-type { border-top: none; margin-top: 0; }
@@ -158,15 +169,17 @@
       font-weight: 600;
       color: var(--text);
       margin: 2rem 0 0.6rem;
+      line-height: 1.21;
     }
 
     h4 {
-      font-size: 0.88rem;
+      font-size: 0.69rem;
       font-weight: 600;
-      color: var(--amber-dim);
+      color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.081em;
       margin: 1.5rem 0 0.5rem;
+      line-height: 1.69;
     }
 
     p { margin-bottom: 0.9rem; color: var(--text-dim); }
@@ -187,17 +200,18 @@
     th {
       text-align: left;
       padding: 0.5rem 0.85rem;
-      background: var(--bg-card);
+      background: #0d0e12;
       color: var(--text-muted);
-      font-size: 0.72rem;
+      font-size: 0.69rem;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.081em;
+      border-bottom: 1px solid rgba(97, 104, 117, 0.3);
+      font-weight: 600;
     }
 
     td {
       padding: 0.6rem 0.85rem;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid rgba(97, 104, 117, 0.15);
       color: var(--text-dim);
       vertical-align: top;
     }
@@ -217,35 +231,37 @@
 
     /* ── Callout boxes ───────────────────────────────────────────── */
     .callout {
-      background: var(--amber-glow);
-      border: 1px solid var(--amber-dim);
+      background: rgba(16, 96, 255, 0.06);
+      border: 1px solid rgba(16, 96, 255, 0.3);
       border-radius: var(--radius);
       padding: 1rem 1.2rem;
       margin: 1rem 0 1.5rem;
       font-size: 0.88rem;
+      box-shadow: var(--shadow);
     }
 
     .callout-title {
-      font-size: 0.72rem;
+      font-size: 0.69rem;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--amber);
-      font-weight: 700;
+      letter-spacing: 0.081em;
+      color: #2b89ff;
+      font-weight: 600;
       margin-bottom: 0.4rem;
+      line-height: 1.69;
     }
 
     .callout p { margin: 0; color: var(--text-dim); }
 
-    .callout.tip { background: #052e1622; border-color: #166534; }
+    .callout.tip { background: rgba(34, 197, 94, 0.06); border-color: rgba(34, 197, 94, 0.3); }
     .callout.tip .callout-title { color: var(--green); }
 
-    .callout.warn { background: #2a1a0022; border-color: var(--amber-dim); }
+    .callout.warn { background: rgba(16, 96, 255, 0.05); border-color: rgba(43, 137, 255, 0.3); }
 
     /* ── Code / example ──────────────────────────────────────────── */
     .example {
       background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-left: 3px solid var(--amber);
+      border: 1px solid rgba(97, 104, 117, 0.3);
+      border-left: 3px solid #1060ff;
       border-radius: var(--radius);
       padding: 0.9rem 1.1rem;
       font-size: 0.84rem;
@@ -253,6 +269,7 @@
       margin: 0.75rem 0 1.25rem;
       font-style: italic;
       line-height: 1.6;
+      box-shadow: var(--shadow);
     }
 
     code {
@@ -261,7 +278,7 @@
       background: var(--bg-input);
       padding: 2px 6px;
       border-radius: 4px;
-      color: var(--amber);
+      color: #2b89ff;
     }
 
     /* ── Checklist ───────────────────────────────────────────────── */
@@ -280,7 +297,7 @@
 
     .checklist li::before {
       content: '☐';
-      color: var(--amber-dim);
+      color: #1060ff;
       flex-shrink: 0;
       margin-top: 1px;
     }
@@ -298,15 +315,17 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 1rem 1.1rem;
+      box-shadow: var(--shadow);
     }
 
     .p-card-name {
-      font-size: 0.78rem;
-      font-weight: 700;
+      font-size: 0.69rem;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--amber);
+      letter-spacing: 0.081em;
+      color: #2b89ff;
       margin-bottom: 0.4rem;
+      line-height: 1.69;
     }
 
     .p-card p { font-size: 0.84rem; margin: 0; color: var(--text-dim); }
@@ -320,25 +339,26 @@
     }
 
     .badge {
-      font-size: 0.72rem;
-      padding: 3px 10px;
-      border-radius: 999px;
+      font-size: 0.69rem;
+      padding: 3px 9px;
+      border-radius: 5px;
       font-weight: 600;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
 
-    .badge-prospect  { background: #1e293b; color: #94a3b8; }
-    .badge-estimated { background: #1e3a5f; color: #60a5fa; }
-    .badge-tournament{ background: #2d1b69; color: #a78bfa; }
-    .badge-submitted { background: #1c3a2f; color: #34d399; }
-    .badge-won       { background: #052e16; color: var(--green); }
-    .badge-lost      { background: #2d1a1a; color: var(--red); }
-    .badge-closed    { background: #1a1a1a; color: var(--text-muted); }
+    .badge-prospect  { background: rgba(148, 163, 184, 0.08); color: #94a3b8; border: 1px solid rgba(148,163,184,0.2); }
+    .badge-estimated { background: rgba(96, 165, 250, 0.08);  color: #60a5fa; border: 1px solid rgba(96,165,250,0.2); }
+    .badge-tournament{ background: rgba(167, 139, 250, 0.08); color: #a78bfa; border: 1px solid rgba(167,139,250,0.2); }
+    .badge-submitted { background: rgba(52, 211, 153, 0.08);  color: #34d399; border: 1px solid rgba(52,211,153,0.2); }
+    .badge-won       { background: rgba(34, 197, 94, 0.08);   color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+    .badge-lost      { background: rgba(239, 68, 68, 0.08);   color: var(--red);   border: 1px solid rgba(239,68,68,0.2); }
+    .badge-closed    { background: rgba(97, 104, 117, 0.08);  color: var(--text-muted); border: 1px solid rgba(97,104,117,0.2); }
 
     /* ── Divider ─────────────────────────────────────────────────── */
     hr {
       border: none;
-      border-top: 1px solid var(--border);
+      border-top: 1px solid rgba(97, 104, 117, 0.25);
       margin: 2.5rem 0;
     }
 
@@ -346,7 +366,7 @@
     footer {
       margin-top: 4rem;
       padding-top: 1.5rem;
-      border-top: 1px solid var(--border);
+      border-top: 1px solid rgba(97, 104, 117, 0.25);
       font-size: 0.78rem;
       color: var(--text-muted);
     }
@@ -377,6 +397,7 @@
     <a href="#getting-started">Getting Started</a>
     <a href="#estimate">Pre-Bid Estimate</a>
     <a class="sub" href="#blueprint-pdf">Blueprint PDF</a>
+    <a class="sub" href="#voice-input">Voice Input</a>
     <a class="sub" href="#writing-descriptions">Writing Descriptions</a>
     <a class="sub" href="#confidence-band">Confidence Band</a>
     <a href="#bid-strategy">Bid Strategy</a>
@@ -447,6 +468,34 @@
     </div>
 
     <p style="margin-top:1rem">If a job is open in Job Tracking when you preprocess, the extracted draft is automatically saved to that job's wiki Scope section.</p>
+
+    <!-- ── Voice Input ────────────────────────────────────────── -->
+    <h3 id="voice-input">Voice Input — Speak Your Description</h3>
+
+    <p>The microphone button inside the Project Description field lets you dictate instead of type — useful on a tablet at the job site, or when you want to talk through a scope faster than you can write it.</p>
+
+    <h4 style="margin-top:1rem;margin-bottom:.4rem;color:var(--text-dim);font-size:.9rem;text-transform:uppercase;letter-spacing:.05em">How to use it</h4>
+    <ol>
+      <li><strong>Click the mic icon</strong> (bottom-right corner of the Project Description field). The icon turns red with a pulse ring — recording is active.</li>
+      <li><strong>Speak your description.</strong> You'll see a live preview appear as you talk. Take your time — there's no time limit.</li>
+      <li><strong>Click the mic icon again</strong> to stop. The final transcript is appended to whatever was already in the field.</li>
+      <li>If you need to redo it, click <strong>↩ Undo last dictation</strong> — it appears below the field for 10 seconds after each insertion and removes only the dictated segment, leaving any other text you've typed untouched.</li>
+    </ol>
+
+    <div class="callout" style="background:#0d1a0d;border-color:#166534;margin-top:1rem">
+      <strong style="color:#22c55e">Tips for good results:</strong>
+      <ul style="margin-top:.5rem;padding-left:1.2rem;line-height:2">
+        <li>Speak in complete sentences with numbers — <em>"twenty-four hundred square foot single-story office build-out"</em> transcribes better than fragments.</li>
+        <li>Say trade terms clearly and at normal pace — <em>"H-V-A-C rough-in"</em>, <em>"concrete masonry unit"</em>, <em>"linear feet of framing"</em>.</li>
+        <li>You can dictate in multiple takes — each click appends to the previous transcript, so build up the description section by section.</li>
+        <li>Always review before estimating. Voice recognition handles construction vocabulary well but will occasionally mishear a term.</li>
+      </ul>
+    </div>
+
+    <div class="callout" style="background:#1c1a00;border-color:#a16207;margin-top:.75rem">
+      <strong style="color:#f59e0b">Browser support:</strong> Voice input requires Chrome or Edge on desktop or Android. It is not available in Firefox or Safari. If your browser is unsupported the mic button is hidden automatically — you won't see a broken button.<br><br>
+      <strong style="color:#f59e0b">Privacy note:</strong> Audio is processed by your browser's built-in speech engine (Google in Chrome). It is not sent to TakeoffAI's servers and is not stored by this app. Do not use voice input for bids containing client-confidential information on shared or managed devices.
+    </div>
 
     <h3>Reading the Results</h3>
     <div class="table-wrap">

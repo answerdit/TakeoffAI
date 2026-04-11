@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from httpx import AsyncClient, ASGITransport
 
 from backend.api.main import app
+import backend.agents._wiki_io as _io
+import backend.agents._wiki_llm as _llm
 
 
 @pytest.mark.anyio
@@ -13,15 +15,14 @@ async def test_job_create(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
-    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
-    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
-    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
 
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text="# Test Job\n\n## Scope\nBuild something.")]
     mock_client = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=mock_response)
-    monkeypatch.setattr(wm, "_anthropic", mock_client)
+    monkeypatch.setattr(_llm, "_anthropic", mock_client)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.post("/api/job/create", json={
@@ -53,7 +54,7 @@ async def test_job_get_not_found(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
-    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.get("/api/job/nonexistent-job", headers={"X-API-Key": "test-key"})
@@ -66,11 +67,12 @@ async def test_job_update_status(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
-    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
+    monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(_io, "PERSONALITIES_DIR", tmp_path / "personalities")
+    monkeypatch.setattr(_io, "MATERIALS_DIR", tmp_path / "materials")
+    # wiki_routes.py accesses wiki_manager.JOBS_DIR directly as a module attr
     monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
-    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
-    monkeypatch.setattr(wm, "PERSONALITIES_DIR", tmp_path / "personalities")
-    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
 
     job_path = tmp_path / "jobs" / "test-job.md"
     wm._write_page(
@@ -83,7 +85,7 @@ async def test_job_update_status(monkeypatch, tmp_path):
     mock_response.content = [MagicMock(text="## Bid Decision\nGoing with $150K.")]
     mock_client = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=mock_response)
-    monkeypatch.setattr(wm, "_anthropic", mock_client)
+    monkeypatch.setattr(_llm, "_anthropic", mock_client)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.post("/api/job/update", json={
@@ -103,6 +105,7 @@ async def test_jobs_list(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
 
     (tmp_path / "jobs").mkdir(parents=True)
@@ -131,6 +134,7 @@ async def test_jobs_list_filter_active(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
+    monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
     monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
 
     (tmp_path / "jobs").mkdir(parents=True)
@@ -153,11 +157,10 @@ async def test_wiki_lint_endpoint(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-key")
 
     import backend.agents.wiki_manager as wm
-    monkeypatch.setattr(wm, "WIKI_DIR", tmp_path)
-    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
-    monkeypatch.setattr(wm, "CLIENTS_DIR", tmp_path / "clients")
-    monkeypatch.setattr(wm, "MATERIALS_DIR", tmp_path / "materials")
-    monkeypatch.setattr(wm, "PERSONALITIES_DIR", tmp_path / "personalities")
+    monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(_io, "MATERIALS_DIR", tmp_path / "materials")
+    monkeypatch.setattr(_io, "PERSONALITIES_DIR", tmp_path / "personalities")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.get("/api/wiki/lint", headers={"X-API-Key": "test-key"})

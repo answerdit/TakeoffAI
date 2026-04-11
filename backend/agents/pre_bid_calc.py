@@ -6,6 +6,7 @@ Inputs:  project description (text), zip code, trade type, overhead %, margin %
 Outputs: line-item estimate with materials, labor, burden, overhead, margin, total
 """
 
+import asyncio
 import base64
 import csv
 from pathlib import Path
@@ -16,21 +17,74 @@ from backend.agents.utils import call_with_json_retry, parse_llm_json
 
 client = AsyncAnthropic()
 
-# ── Load seed material costs once at import time ─────────────────────────────
+# ── Load seed material costs with mtime-based cache ──────────────────────────
+# Reloads only when the CSV file changes on disk (picked up from PriceVerifier
+# updates). Avoids blocking file I/O on every async call / tournament fanout.
+# The formatted table string is also cached under the same mtime key so
+# tournament fan-out (30 concurrent calls) pays zero I/O and zero string
+# rebuilds on cache hits.
 
 _CSV_PATH = Path(__file__).parent.parent / "data" / "material_costs.csv"
+_costs_cache: list[dict] = []
+_costs_mtime: float = 0.0
+_costs_table_str: str = ""
+_costs_refresh_lock = asyncio.Lock()
 
 
-def _load_material_costs() -> list[dict]:
+def _sync_load() -> list[dict]:
+    """Stat + file read. Must only be called via asyncio.to_thread — never directly
+    on the event loop — so neither the stat syscall nor the file read block async I/O.
+    Fast path (cache hit): returns immediately after one stat call.
+    Slow path (CSV changed): re-reads the file and invalidates the formatted-string cache.
+    """
+    global _costs_cache, _costs_mtime, _costs_table_str
     if not _CSV_PATH.exists():
         return []
+    try:
+        mtime = _CSV_PATH.stat().st_mtime
+    except OSError:
+        return _costs_cache
+    if mtime == _costs_mtime and _costs_cache:
+        return _costs_cache
     with open(_CSV_PATH, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+        _costs_cache = list(csv.DictReader(f))
+    _costs_mtime = mtime
+    _costs_table_str = ""  # invalidate formatted-string cache
+    return _costs_cache
+
+
+async def _ensure_costs_fresh() -> None:
+    """Refresh the material cost cache off the event loop.
+
+    Cold start (cache empty): serialises behind a lock so only one coroutine
+    does the file read; the rest re-check on release and return early.
+
+    Warm path (cache populated): always delegates to _sync_load() via
+    asyncio.to_thread() so the mtime check runs off the event loop.  _sync_load
+    returns immediately on a cache hit (one stat syscall, no file read), and
+    reloads automatically when material_costs.csv changes — e.g. after a
+    nightly PriceVerifier update.  Skipping this call on the warm path would
+    cause stale pricing to be served indefinitely after the first load.
+    """
+    if not _costs_cache:
+        # Cold start: serialise to prevent thundering herd.
+        async with _costs_refresh_lock:
+            if not _costs_cache:            # re-check: another coroutine may have loaded while we waited
+                await asyncio.to_thread(_sync_load)
+        return
+    # Warm path: mtime check off-loop — fast no-op on hit, reload on CSV change.
+    await asyncio.to_thread(_sync_load)
 
 
 def _format_cost_table() -> str:
-    """Format the seed CSV as a readable table for the system prompt. Reloads on every call."""
-    costs = _load_material_costs()
+    """Return the cached markdown table.  Always call _ensure_costs_fresh() first
+    from an async context so the cache is guaranteed warm before this runs.
+    """
+    global _costs_table_str
+    if _costs_table_str:
+        return _costs_table_str
+    # Fallback for sync callers (e.g. tests calling _build_system_prompt directly).
+    costs = _sync_load()
     if not costs:
         return "(no seed data available)"
     lines = ["| Item | Unit | Low $/unit | High $/unit | Trade |", "| --- | --- | --- | --- | --- |"]
@@ -38,7 +92,8 @@ def _format_cost_table() -> str:
         lines.append(
             f"| {row['item']} | {row['unit']} | ${row['low_cost']} | ${row['high_cost']} | {row['trade_category']} |"
         )
-    return "\n".join(lines)
+    _costs_table_str = "\n".join(lines)
+    return _costs_table_str
 
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -202,6 +257,7 @@ async def run_prebid_calc_with_modifier(
     Run PreBidCalc with an optional personality modifier appended to the system prompt.
     Used by the tournament engine to inject bidding-style instructions per agent.
     """
+    await _ensure_costs_fresh()
     system = _build_system_prompt()
     if system_prompt_modifier:
         system = system + f"\n\n---\n\n{system_prompt_modifier}"

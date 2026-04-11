@@ -12,11 +12,16 @@ from typing import Optional
 
 import aiosqlite
 
+from backend.agents._db import _configure_conn
 from backend.agents.pre_bid_calc import run_prebid_calc_with_modifier
 from backend.config import settings
 
 DB_PATH = settings.db_path
 TRACES_DIR = Path(__file__).parent.parent / "data" / "traces"
+
+# Limit concurrent Anthropic API calls to avoid rate limit 429s.
+# 10 is safe for Anthropic Tier-1 (50 RPM limit shared across all requests).
+_LLM_SEM = asyncio.Semaphore(10)
 
 # ── Personality system-prompt modifiers ───────────────────────────────────────
 
@@ -100,36 +105,37 @@ async def _run_single_agent(
     sample_index: int = 0,
 ) -> AgentResult:
     """Execute one PreBidCalc call directly (async)."""
-    try:
-        estimate = await run_prebid_calc_with_modifier(
-            description,
-            zip_code,
-            trade_type,
-            overhead_pct,
-            margin_pct,
-            system_prompt_modifier,
-            temperature=temperature,
-        )
-        return AgentResult(
-            agent_name=agent_name,
-            estimate=estimate,
-            total_bid=float(estimate.get("total_bid", 0.0)),
-            margin_pct=float(estimate.get("margin_pct", margin_pct)),
-            confidence=estimate.get("confidence", "medium"),
-            temperature=temperature,
-            sample_index=sample_index,
-        )
-    except Exception as exc:
-        return AgentResult(
-            agent_name=agent_name,
-            estimate={},
-            total_bid=0.0,
-            margin_pct=0.0,
-            confidence="low",
-            temperature=temperature,
-            sample_index=sample_index,
-            error=str(exc),
-        )
+    async with _LLM_SEM:
+        try:
+            estimate = await run_prebid_calc_with_modifier(
+                description,
+                zip_code,
+                trade_type,
+                overhead_pct,
+                margin_pct,
+                system_prompt_modifier,
+                temperature=temperature,
+            )
+            return AgentResult(
+                agent_name=agent_name,
+                estimate=estimate,
+                total_bid=float(estimate.get("total_bid", 0.0)),
+                margin_pct=float(estimate.get("margin_pct", margin_pct)),
+                confidence=estimate.get("confidence", "medium"),
+                temperature=temperature,
+                sample_index=sample_index,
+            )
+        except Exception as exc:
+            return AgentResult(
+                agent_name=agent_name,
+                estimate={},
+                total_bid=0.0,
+                margin_pct=0.0,
+                confidence="low",
+                temperature=temperature,
+                sample_index=sample_index,
+                error=str(exc),
+            )
 
 
 def _collapse_to_consensus(results: list[AgentResult]) -> list[AgentResult]:
@@ -278,14 +284,19 @@ async def run_tournament(
             excluded_agents = _prof.get("excluded_agents", [])
 
     agents_to_run = [name for name in personalities if name not in excluded_agents]
-    tasks = []
+
+    # Build coroutines grouped by personality so we can fire one warmup per
+    # personality first (to populate the Anthropic prompt cache) before
+    # releasing the rest in parallel.
+    from collections import defaultdict
+    tasks_by_personality: dict[str, list] = defaultdict(list)
     for name in agents_to_run:
         modifier = PERSONALITY_PROMPTS[name]
         if name == "historical_match" and client_context:
             modifier = modifier + f"\n\n{client_context}"
         for temp in TEMPERATURES:
             for sample_idx in range(n_samples):
-                tasks.append(
+                tasks_by_personality[name].append(
                     _run_single_agent(
                         name, description, zip_code, trade_type,
                         overhead_pct, margin_pct, modifier,
@@ -294,7 +305,28 @@ async def run_tournament(
                     )
                 )
 
-    results: list[AgentResult] = list(await asyncio.gather(*tasks))
+    # Fire one warmup per personality serially (populates prompt cache).
+    warmup_results: list[AgentResult] = []
+    for _group in tasks_by_personality.values():
+        warmup_results.append(await _group[0])
+
+    # Fire remaining tasks in parallel; return_exceptions prevents one 429
+    # from cancelling all other in-flight tasks.
+    remaining = [t for _group in tasks_by_personality.values() for t in _group[1:]]
+    rest_raw = list(await asyncio.gather(*remaining, return_exceptions=True))
+    rest_results: list[AgentResult] = [
+        r if isinstance(r, AgentResult) else AgentResult(
+            agent_name="unknown",
+            estimate={},
+            total_bid=0.0,
+            margin_pct=0.0,
+            confidence="low",
+            error=str(r),
+        )
+        for r in rest_raw
+    ]
+
+    results: list[AgentResult] = warmup_results + rest_results
 
     consensus = _collapse_to_consensus(results)
 
@@ -302,6 +334,7 @@ async def run_tournament(
     consensus_keys = {(e.agent_name, e.total_bid, e.temperature, e.sample_index) for e in consensus}
 
     async with aiosqlite.connect(DB_PATH) as db:
+        await _configure_conn(db)
         tournament_id = await _save_tournament(db, client_id, description, zip_code)
         await _save_entries(db, tournament_id, results, consensus_keys, client_id, description, zip_code)
 

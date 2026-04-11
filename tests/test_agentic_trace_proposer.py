@@ -149,7 +149,7 @@ def test_list_traces_returns_files_for_client(tmp_path):
             "estimate": {"total_bid": 100000.0},
         }))
 
-    results = ev._handle_list_traces(tmp_path, client_id="client_a")
+    results = asyncio.run(ev._handle_list_traces(tmp_path, client_id="client_a"))
     assert len(results) == 2
     agent_names = {r["agent_name"] for r in results}
     assert agent_names == {"aggressive", "conservative"}
@@ -175,7 +175,7 @@ def test_list_traces_filters_by_agent_name(tmp_path):
             "estimate": {"total_bid": 50000.0},
         }))
 
-    results = ev._handle_list_traces(tmp_path, client_id="c1", agent_name="aggressive")
+    results = asyncio.run(ev._handle_list_traces(tmp_path, client_id="c1", agent_name="aggressive"))
     assert len(results) == 1
     assert results[0]["agent_name"] == "aggressive"
 
@@ -195,7 +195,7 @@ def test_list_traces_respects_limit(tmp_path):
             "estimate": {"total_bid": float(i * 1000)},
         }))
 
-    results = ev._handle_list_traces(tmp_path, client_id="c1", limit=3)
+    results = asyncio.run(ev._handle_list_traces(tmp_path, client_id="c1", limit=3))
     assert len(results) == 3
 
 
@@ -206,7 +206,7 @@ def test_read_file_returns_content_within_data_dir(tmp_path):
     f = tmp_path / "test.json"
     f.write_text(json.dumps({"key": "value"}))
 
-    result = ev._handle_read_file(tmp_path, str(f))
+    result = asyncio.run(ev._handle_read_file(tmp_path, str(f)))
     assert result == {"key": "value"}
 
 
@@ -217,7 +217,7 @@ def test_read_file_blocks_paths_outside_data_dir(tmp_path):
     outside = tmp_path.parent / "secrets.txt"
     outside.write_text("secret")
 
-    result = ev._handle_read_file(tmp_path, str(outside))
+    result = asyncio.run(ev._handle_read_file(tmp_path, str(outside)))
     assert "error" in result
     assert "Access denied" in result["error"]
 
@@ -226,13 +226,14 @@ def test_read_file_returns_error_for_missing_file(tmp_path):
     """_handle_read_file returns error dict when file does not exist."""
     import backend.agents.harness_evolver as ev
 
-    result = ev._handle_read_file(tmp_path, str(tmp_path / "nonexistent.json"))
+    result = asyncio.run(ev._handle_read_file(tmp_path, str(tmp_path / "nonexistent.json")))
     assert "error" in result
 
 
 # ── Agentic loop tests ─────────────────────────────────────────────────────────
 
-def test_agentic_proposer_multi_turn_tool_loop(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_agentic_proposer_multi_turn_tool_loop(tmp_path, monkeypatch):
     """_run_agentic_proposer processes multi-turn tool calls and returns proposed JSON."""
     import backend.agents.harness_evolver as ev
 
@@ -258,17 +259,24 @@ def test_agentic_proposer_multi_turn_tool_loop(tmp_path, monkeypatch):
     r3 = MagicMock(stop_reason="end_turn", content=[text_block])
 
     call_count = [0]
-    def mock_create(**kwargs):
+
+    async def mock_create(**kwargs):
         resp = [r1, r2, r3][min(call_count[0], 2)]
         call_count[0] += 1
         return resp
 
-    monkeypatch.setattr(ev, "_handle_list_traces", lambda data_dir, **kw: [])
-    monkeypatch.setattr(ev, "_handle_read_file", lambda data_dir, path: {"agent_name": "aggressive"})
+    async def _mock_list_traces(data_dir, **kw):
+        return []
 
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_cls.return_value.messages.create.side_effect = mock_create
-        result = ev._run_agentic_proposer(
+    async def _mock_read_file(data_dir, path):
+        return {"agent_name": "aggressive"}
+
+    monkeypatch.setattr(ev, "_handle_list_traces", _mock_list_traces)
+    monkeypatch.setattr(ev, "_handle_read_file", _mock_read_file)
+
+    with patch("anthropic.AsyncAnthropic") as mock_cls:
+        mock_cls.return_value.messages.create = AsyncMock(side_effect=mock_create)
+        result = await ev._run_agentic_proposer(
             data_dir=tmp_path,
             client_id="c1",
             underperforming=["conservative", "balanced"],
@@ -281,7 +289,8 @@ def test_agentic_proposer_multi_turn_tool_loop(tmp_path, monkeypatch):
     assert call_count[0] == 3
 
 
-def test_agentic_proposer_soft_cap_forces_proposal(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_agentic_proposer_soft_cap_forces_proposal(tmp_path, monkeypatch):
     """When tool calls hit MAX_TOOL_CALLS, a forcing message is injected."""
     import backend.agents.harness_evolver as ev
 
@@ -303,18 +312,21 @@ def test_agentic_proposer_soft_cap_forces_proposal(tmp_path, monkeypatch):
     call_count = [0]
     captured_messages = []
 
-    def mock_create(**kwargs):
+    async def mock_create(**kwargs):
         captured_messages.append(kwargs.get("messages", []))
         call_count[0] += 1
         if call_count[0] <= 2:
             return tool_response
         return final_response
 
-    monkeypatch.setattr(ev, "_handle_list_traces", lambda data_dir, **kw: [])
+    async def _mock_list_traces(data_dir, **kw):
+        return []
 
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_cls.return_value.messages.create.side_effect = mock_create
-        result = ev._run_agentic_proposer(
+    monkeypatch.setattr(ev, "_handle_list_traces", _mock_list_traces)
+
+    with patch("anthropic.AsyncAnthropic") as mock_cls:
+        mock_cls.return_value.messages.create = AsyncMock(side_effect=mock_create)
+        result = await ev._run_agentic_proposer(
             data_dir=tmp_path,
             client_id="c1",
             underperforming=["balanced"],
@@ -358,11 +370,10 @@ def test_evolve_harness_uses_agentic_proposer(tmp_path, monkeypatch):
     }
     (tmp_path / "evo_client.json").write_text(json.dumps(profile))
 
-    monkeypatch.setattr(
-        ev,
-        "_run_agentic_proposer",
-        lambda **kw: '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nAGENTIC CONTENT\\n"}',
-    )
+    async def _mock_proposer_agentic(**kw):
+        return '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nAGENTIC CONTENT\\n"}'
+
+    monkeypatch.setattr(ev, "_run_agentic_proposer", _mock_proposer_agentic)
     monkeypatch.setattr(ev, "_get_generation_number", lambda: 0)
     with patch("backend.agents.harness_evolver._git_commit") as mock_git:
         mock_git.return_value = "abc1234"

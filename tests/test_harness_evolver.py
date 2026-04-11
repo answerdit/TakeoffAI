@@ -164,11 +164,10 @@ def test_evolve_harness_applies_proposed_prompts(tmp_path, monkeypatch):
     }
     (tmp_path / "default.json").write_text(json.dumps(profile))
 
-    monkeypatch.setattr(
-        ev,
-        "_run_agentic_proposer",
-        lambda **kw: '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEVOLVED CONTENT\\n"}',
-    )
+    async def _mock_proposer(**kw):
+        return '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEVOLVED CONTENT\\n"}'
+
+    monkeypatch.setattr(ev, "_run_agentic_proposer", _mock_proposer)
     monkeypatch.setattr(ev, "_get_generation_number", lambda: 0)
     with patch("backend.agents.harness_evolver._git_commit") as mock_git:
         mock_git.return_value = "abc1234"
@@ -221,7 +220,10 @@ def test_evolve_harness_handles_markdown_wrapped_json(tmp_path, monkeypatch):
 
     wrapped = '```json\n{"balanced": "## BIDDING PERSONALITY: BALANCED\\nFROM MARKDOWN\\n"}\n```'
 
-    monkeypatch.setattr(ev, "_run_agentic_proposer", lambda **kw: wrapped)
+    async def _mock_proposer_md(**kw):
+        return wrapped
+
+    monkeypatch.setattr(ev, "_run_agentic_proposer", _mock_proposer_md)
     monkeypatch.setattr(ev, "_get_generation_number", lambda: 2)
     with patch("backend.agents.harness_evolver._git_commit") as mock_git:
         mock_git.return_value = "def5678"
@@ -298,6 +300,106 @@ def test_judge_tournament_fires_evolution_when_dominant(tmp_path, monkeypatch):
     tasks = asyncio.run(run())
     # At least one task should be the evolve_harness coroutine
     assert any("evolve_harness" in t for t in tasks)
+
+
+# ── Dry-run tests ─────────────────────────────────────────────────────────────
+
+def test_evolve_harness_dry_run_returns_diff_without_writing(tmp_path, monkeypatch):
+    """dry_run=True returns proposed diff and does NOT write tournament.py or commit."""
+    import shutil
+    import backend.agents.feedback_loop as fl
+    import backend.agents.harness_evolver as ev
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    fake_tourn = tmp_path / "tournament.py"
+    shutil.copy(ev.TOURNAMENT_PY, fake_tourn)
+    original_content = fake_tourn.read_text()
+    monkeypatch.setattr(ev, "TOURNAMENT_PY", fake_tourn)
+
+    profile = {
+        "client_id": "dry_client",
+        "winning_examples": [],
+        "stats": {
+            "total_tournaments": 15,
+            "win_rate_by_agent": {
+                "conservative": 0.07, "balanced": 0.07, "aggressive": 0.72,
+                "historical_match": 0.07, "market_beater": 0.07,
+            },
+            "avg_winning_bid": 0.0, "avg_winning_margin": 0.0, "wins_by_agent": {},
+        },
+    }
+    (tmp_path / "dry_client.json").write_text(json.dumps(profile))
+
+    async def _mock_proposer_dry(**kw):
+        return '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nDRY RUN CONTENT\\n"}'
+
+    monkeypatch.setattr(ev, "_run_agentic_proposer", _mock_proposer_dry)
+
+    with patch("backend.agents.harness_evolver._git_commit") as mock_git:
+        result = asyncio.run(ev.evolve_harness("dry_client", dry_run=True))
+        mock_git.assert_not_called()
+
+    assert result["status"] == "dry_run"
+    assert "conservative" in result["evolved_agents"]
+    assert "proposed_prompts" in result
+    assert "DRY RUN CONTENT" in result["proposed_prompts"]["conservative"]
+    assert "diff" in result
+    assert "DRY RUN CONTENT" in result["diff"]
+    # File must be untouched
+    assert fake_tourn.read_text() == original_content
+
+
+def test_post_evolve_dry_run_endpoint(tmp_path, monkeypatch):
+    """POST /api/tournament/evolve with dry_run=true returns dry_run status, no git commit."""
+    import shutil
+    import backend.agents.feedback_loop as fl
+    import backend.agents.harness_evolver as ev
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.api.routes import router
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path)
+    monkeypatch.setenv("API_KEY", "test-key")
+    fake_tourn = tmp_path / "tournament.py"
+    shutil.copy(ev.TOURNAMENT_PY, fake_tourn)
+    original_content = fake_tourn.read_text()
+    monkeypatch.setattr(ev, "TOURNAMENT_PY", fake_tourn)
+
+    profile = {
+        "client_id": "dry_ep_client",
+        "winning_examples": [],
+        "stats": {
+            "total_tournaments": 15,
+            "win_rate_by_agent": {
+                "conservative": 0.07, "balanced": 0.07, "aggressive": 0.72,
+                "historical_match": 0.07, "market_beater": 0.07,
+            },
+            "avg_winning_bid": 0.0, "avg_winning_margin": 0.0, "wins_by_agent": {},
+        },
+    }
+    (tmp_path / "dry_ep_client.json").write_text(json.dumps(profile))
+
+    async def _mock_proposer_ep_dry(**kw):
+        return '{"balanced": "## BIDDING PERSONALITY: BALANCED\\nEP DRY RUN\\n"}'
+
+    monkeypatch.setattr(ev, "_run_agentic_proposer", _mock_proposer_ep_dry)
+
+    with patch("backend.agents.harness_evolver._git_commit") as mock_git:
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        with TestClient(app) as c:
+            resp = c.post(
+                "/api/tournament/evolve",
+                json={"client_id": "dry_ep_client", "dry_run": True},
+                headers={"X-API-Key": "test-key"},
+            )
+        mock_git.assert_not_called()
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "dry_run"
+    assert "diff" in data
+    assert fake_tourn.read_text() == original_content
 
 
 # ── Endpoint tests ─────────────────────────────────────────────────────────────
@@ -388,11 +490,10 @@ def test_post_evolve_returns_evolved_on_success(tmp_path, monkeypatch):
     }
     (tmp_path / "evolve_client.json").write_text(json.dumps(profile))
 
-    monkeypatch.setattr(
-        ev,
-        "_run_agentic_proposer",
-        lambda **kw: '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEP TEST\\n"}',
-    )
+    async def _mock_proposer_ep(**kw):
+        return '{"conservative": "## BIDDING PERSONALITY: CONSERVATIVE\\nEP TEST\\n"}'
+
+    monkeypatch.setattr(ev, "_run_agentic_proposer", _mock_proposer_ep)
     monkeypatch.setattr(ev, "_get_generation_number", lambda: 1)
     with patch("backend.agents.harness_evolver._git_commit") as mock_git:
         mock_git.return_value = "fff9999"

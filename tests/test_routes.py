@@ -268,6 +268,40 @@ async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
 
 
 @pytest.mark.anyio
+async def test_bid_strategy_estimate_too_large(monkeypatch):
+    """estimate JSON over 500KB should return 422."""
+    monkeypatch.setenv("API_KEY", "test-key")
+    oversized_estimate = {"data": "x" * 600_000}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post(
+            "/api/bid/strategy",
+            json={
+                "estimate": oversized_estimate,
+                "rfp_text": "Provide all labor and materials for a 10,000 sqft commercial buildout.",
+            },
+            headers={"X-API-Key": "test-key"},
+        )
+    assert resp.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_bid_strategy_known_competitors_too_many(monkeypatch):
+    """known_competitors list over 20 items should return 422."""
+    monkeypatch.setenv("API_KEY", "test-key")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post(
+            "/api/bid/strategy",
+            json={
+                "estimate": {"total_bid": 100000},
+                "rfp_text": "Provide all labor and materials for a 10,000 sqft commercial buildout.",
+                "known_competitors": [f"Contractor {i}" for i in range(21)],
+            },
+            headers={"X-API-Key": "test-key"},
+        )
+    assert resp.status_code == 422
+
+
+@pytest.mark.anyio
 async def test_preprocess_pdf_wrong_type(monkeypatch):
     """Non-PDF bytes (missing %PDF- magic bytes) should return 400."""
     monkeypatch.setenv("API_KEY", "test-key")

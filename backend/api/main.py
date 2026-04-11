@@ -9,6 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from backend.agents._db import _configure_conn
 from backend.api.routes import limiter, router, verify_api_key
 from backend.api.upload import upload_router
 from backend.api.verification import verification_router
@@ -128,8 +129,7 @@ async def lifespan(app: FastAPI):
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_CREATE_TABLES)
-        await db.execute("PRAGMA foreign_keys = ON")
-        await db.execute("PRAGMA journal_mode = WAL")
+        await _configure_conn(db)
         await db.commit()
         await _run_migrations(db)
     start_scheduler()

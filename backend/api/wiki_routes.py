@@ -3,6 +3,7 @@ TakeoffAI — Wiki & Job Tracking route definitions.
 Job pipeline CRUD and wiki lint endpoint.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -10,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.agents import wiki_manager
-from backend.api.routes import limiter
+from backend.api.routes import _fire, limiter
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ async def job_create(request: Request, req: JobCreateRequest):
             zip_code=req.zip_code,
             trade_type=req.trade_type,
         )
+        _fire(_ws_notify_job_created(result["job_slug"], req))
         return result
     except Exception as exc:
         logger.exception("job_create failed")
@@ -72,7 +74,10 @@ async def job_update(request: Request, req: JobUpdateRequest):
     if req.status == "closed" and req.actual_cost is None:
         raise HTTPException(status_code=400, detail="actual_cost is required for closed status")
 
-    page_path = wiki_manager.JOBS_DIR / f"{req.job_slug}.md"
+    target = (wiki_manager.JOBS_DIR / f"{req.job_slug}.md").resolve()
+    if not target.is_relative_to(wiki_manager.JOBS_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid job slug")
+    page_path = target
     if not page_path.exists():
         raise HTTPException(status_code=404, detail=f"Job '{req.job_slug}' not found")
 
@@ -83,6 +88,7 @@ async def job_update(request: Request, req: JobUpdateRequest):
                 our_bid=req.our_bid,
                 notes=req.notes or "",
             )
+            _fire(_ws_notify_bid_submitted(req))
         elif req.status in ("won", "lost", "closed"):
             await wiki_manager.cascade_outcome(
                 job_slug=req.job_slug,
@@ -90,6 +96,7 @@ async def job_update(request: Request, req: JobUpdateRequest):
                 actual_cost=req.actual_cost,
                 notes=req.notes or "",
             )
+            _fire(_ws_notify_outcome(req))
 
         meta, _ = wiki_manager.read_page(page_path)
         return meta
@@ -101,7 +108,10 @@ async def job_update(request: Request, req: JobUpdateRequest):
 @wiki_router.get("/job/{slug}")
 async def job_get(slug: str):
     """Return a job's frontmatter as JSON."""
-    page_path = wiki_manager.JOBS_DIR / f"{slug}.md"
+    target = (wiki_manager.JOBS_DIR / f"{slug}.md").resolve()
+    if not target.is_relative_to(wiki_manager.JOBS_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid job slug")
+    page_path = target
     if not page_path.exists():
         raise HTTPException(status_code=404, detail=f"Job '{slug}' not found")
 
@@ -129,6 +139,51 @@ async def jobs_list(status: Optional[str] = None):
         results.append(meta)
 
     return results
+
+
+# ── Workspace fire-and-forget helpers ────────────────────────────────────────
+
+async def _ws_notify_job_created(job_slug: str, req: JobCreateRequest) -> None:
+    try:
+        from backend.agents._workspace import notify_job_created
+        await notify_job_created(
+            job_slug=job_slug,
+            client_id=req.client_id,
+            project_name=req.project_name,
+            description=req.description,
+            zip_code=req.zip_code,
+            trade_type=req.trade_type,
+        )
+    except Exception:
+        logger.exception("_ws_notify_job_created failed (non-fatal)")
+
+
+async def _ws_notify_bid_submitted(req: JobUpdateRequest) -> None:
+    try:
+        from backend.agents._workspace import notify_bid_submitted
+        meta, _ = wiki_manager.read_page(wiki_manager.JOBS_DIR / f"{req.job_slug}.md")
+        await notify_bid_submitted(
+            job_slug=req.job_slug,
+            client_id=meta.get("client", req.job_slug),
+            our_bid=req.our_bid,
+        )
+    except Exception:
+        logger.exception("_ws_notify_bid_submitted failed (non-fatal)")
+
+
+async def _ws_notify_outcome(req: JobUpdateRequest) -> None:
+    try:
+        from backend.agents._workspace import notify_outcome
+        meta, _ = wiki_manager.read_page(wiki_manager.JOBS_DIR / f"{req.job_slug}.md")
+        await notify_outcome(
+            job_slug=req.job_slug,
+            client_id=meta.get("client", req.job_slug),
+            status=req.status,
+            our_bid=meta.get("our_bid"),
+            actual_cost=req.actual_cost,
+        )
+    except Exception:
+        logger.exception("_ws_notify_outcome failed (non-fatal)")
 
 
 @wiki_router.get("/wiki/lint")

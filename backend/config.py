@@ -28,5 +28,13 @@ class Settings(BaseSettings):
     wiki_model: str = "claude-haiku-4-5"
     db_path: str = str(_DATA_DIR / "takeoffai.db")
 
+    # ── Google Workspace (gws CLI) ──────────────────────────────────────────
+    gws_enabled: bool = False
+    gws_bin: str = "gws"                  # override if gws is not on PATH
+    gws_notify_email: str = ""            # recipient for Gmail notifications
+    gws_calendar_id: str = "primary"     # calendar for bid deadline events
+    gws_tournament_sheet_id: str = ""    # Sheets ID for tournament log
+    gws_price_audit_sheet_id: str = ""   # Sheets ID for price audit log
+
 
 settings = Settings()

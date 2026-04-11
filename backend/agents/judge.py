@@ -6,13 +6,22 @@ Three modes: HUMAN (explicit pick), HISTORICAL (closest to actual winning bid), 
 
 import asyncio
 import json
+import logging
 from enum import Enum
 from typing import Optional
 
 import aiosqlite
 
+from backend.agents._db import _configure_conn
 from backend.agents.price_verifier import verify_line_items
 from backend.config import settings
+
+_log = logging.getLogger(__name__)
+
+
+def _log_task_err(t: asyncio.Task) -> None:
+    if not t.cancelled() and t.exception():
+        _log.error("background task failed: %s", t.exception(), exc_info=t.exception())
 
 DB_PATH = settings.db_path
 AUTO_MODE_MIN_TOURNAMENTS = 20
@@ -82,6 +91,7 @@ async def judge_tournament(
     Triggers feedback_loop.update_client_profile for the winning entry.
     """
     async with aiosqlite.connect(DB_PATH) as db:
+        await _configure_conn(db)
         db.row_factory = aiosqlite.Row
 
         async with db.execute(
@@ -167,7 +177,8 @@ async def judge_tournament(
     if client_id and winner_entry:
         from backend.agents.harness_evolver import check_dominance, evolve_harness
         if check_dominance(client_id):
-            asyncio.create_task(evolve_harness(client_id))
+            _t = asyncio.create_task(evolve_harness(client_id))
+            _t.add_done_callback(_log_task_err)
 
     # ── Background price verification of winning estimate ─────────────────────
     if winner_entry:
@@ -178,16 +189,18 @@ async def judge_tournament(
             estimate = {}
         line_items = estimate.get("line_items", [])
         if line_items:
-            asyncio.create_task(
+            _t = asyncio.create_task(
                 verify_line_items(
                     line_items=line_items,
                     triggered_by="background",
                     tournament_id=tournament_id,
                 )
             )
+            _t.add_done_callback(_log_task_err)
 
     return {
         "tournament_id": tournament_id,
+        "client_id": client_id,
         "mode": mode,
         "winner_agent": winner_entry["agent_name"] if winner_entry else None,
         "winner_total_bid": winner_entry["total_bid"] if winner_entry else None,

@@ -4,6 +4,7 @@ Thin HTTP layer; delegates all logic to agent modules.
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -28,6 +29,18 @@ from backend.config import settings
 
 DB_PATH = settings.db_path
 
+# ── Background task registry (prevents GC of fire-and-forget tasks) ──────────
+
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire(coro) -> None:
+    """Schedule a fire-and-forget coroutine, keeping a strong ref until done."""
+    t = asyncio.create_task(coro)
+    _background_tasks.add(t)
+    t.add_done_callback(_background_tasks.discard)
+
+
 # ── Rate limiter (shared with main.py via app.state.limiter) ─────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
@@ -43,7 +56,7 @@ async def verify_api_key(key: str = Security(_api_key_header)):
         if env_key is None and settings.app_env == "development":
             return
         raise HTTPException(status_code=403, detail="API key not configured")
-    if key != configured_key:
+    if not hmac.compare_digest(key or "", configured_key):
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
 
@@ -102,7 +115,7 @@ async def estimate(request: Request, req: EstimateRequest):
         )
         # Fire-and-forget wiki enrichment if job_slug provided
         if req.job_slug:
-            asyncio.ensure_future(_wiki_enrich_estimate(req.job_slug, result))
+            _fire(_wiki_enrich_estimate(req.job_slug, result))
         return result
     except Exception as exc:
         logging.exception("estimate failed")
@@ -140,7 +153,7 @@ async def estimate_preprocess_pdf(
         raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     if job_slug:
-        asyncio.ensure_future(_wiki_enrich_scope(job_slug, draft))
+        _fire(_wiki_enrich_scope(job_slug, draft))
 
     return {"draft": draft}
 
@@ -224,7 +237,8 @@ async def tournament_run(request: Request, req: TournamentRunRequest):
         }
         # Fire-and-forget wiki enrichment if job_slug provided
         if req.job_slug:
-            asyncio.ensure_future(_wiki_enrich_tournament(req.job_slug, response))
+            _fire(_wiki_enrich_tournament(req.job_slug, response))
+        _fire(_ws_log_tournament(response, req.client_id, req.description))
         return response
     except Exception as exc:
         logging.exception("tournament_run failed")
@@ -241,6 +255,7 @@ async def tournament_judge(req: TournamentJudgeRequest):
             actual_winning_bid=req.actual_winning_bid,
             human_notes=req.human_notes,
         )
+        _fire(_ws_notify_tournament_judged(result, result.get("client_id", "")))
         return result
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -324,6 +339,13 @@ async def reset_agent_history_endpoint(client_id: str, agent_name: str):
 
 class EvolveRequest(BaseModel):
     client_id: str = Field(default="default", description="Client ID to use as diagnostic context")
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "If true, run full agentic analysis and return proposed diffs "
+            "without writing tournament.py or committing to git."
+        ),
+    )
 
 
 @router.post("/tournament/evolve")
@@ -331,12 +353,14 @@ async def evolve_harness_endpoint(req: EvolveRequest):
     """
     Manually trigger harness evolution. Analyzes client tournament history,
     evolves underperforming agent prompts via Claude, and commits to git.
+
+    Pass dry_run=true to preview proposed prompt changes without modifying any files.
     Returns 423 if evolution is already in progress.
     """
     if _get_lock().locked():
         raise HTTPException(status_code=423, detail="Evolution already in progress")
     try:
-        result = await _evolve_harness(req.client_id)
+        result = await _evolve_harness(req.client_id, dry_run=req.dry_run)
         if result.get("status") == "locked":
             raise HTTPException(status_code=423, detail="Evolution already in progress")
         return result
@@ -366,6 +390,37 @@ async def _wiki_enrich_tournament(job_slug: str, tournament_data: dict) -> None:
         await enrich_tournament(job_slug, tournament_data)
     except Exception:
         logging.exception("wiki enrich_tournament failed for %s (non-fatal)", job_slug)
+
+
+# ── Workspace fire-and-forget helpers ─────────────────────────────────────────
+
+async def _ws_log_tournament(response: dict, client_id: str, description: str) -> None:
+    """Fire-and-forget: log tournament consensus entries to Google Sheet."""
+    try:
+        from backend.agents._workspace import log_tournament_to_sheet
+        await log_tournament_to_sheet(
+            tournament_id=response["tournament_id"],
+            client_id=client_id or "default",
+            description=description,
+            consensus_entries=response.get("consensus_entries", []),
+        )
+    except Exception:
+        logging.exception("_ws_log_tournament failed (non-fatal)")
+
+
+async def _ws_notify_tournament_judged(result: dict, client_id: str) -> None:
+    """Fire-and-forget: send Gmail notification when a tournament is judged."""
+    try:
+        from backend.agents._workspace import notify_tournament_judged
+        await notify_tournament_judged(
+            tournament_id=result["tournament_id"],
+            client_id=client_id or "default",
+            winner_agent=result.get("winner_agent", "unknown"),
+            winner_bid=result.get("winner_total_bid") or 0.0,
+            mode=str(result.get("mode", "")),
+        )
+    except Exception:
+        logging.exception("_ws_notify_tournament_judged failed (non-fatal)")
 
 
 async def _wiki_enrich_scope(job_slug: str, draft_text: str) -> None:

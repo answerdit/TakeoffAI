@@ -19,6 +19,7 @@ from urllib.parse import quote_plus
 import httpx
 from anthropic import AsyncAnthropic
 
+from backend.agents._db import _configure_conn
 from backend.config import settings
 
 anthropic_client = AsyncAnthropic()
@@ -45,6 +46,35 @@ _SUPPLIER_URLS = {
 }
 
 
+def _extract_price_candidates(html: str) -> str:
+    """
+    Extract price-like patterns from raw HTML before sending to LLM.
+    Returns a condensed string of candidate price mentions (max ~800 chars).
+    Falls back to the first 800 chars of the raw HTML if no candidates found.
+    """
+    # Match dollar amounts: $1.23, $12.34, $123.45, $1,234.56
+    # Also match "per unit" context lines
+    candidates = re.findall(
+        r'(?:^|[\s>"\'])(\$[\d,]+\.?\d*(?:\s*/\s*\w+)?)',
+        html,
+        re.MULTILINE,
+    )
+    if candidates:
+        # Deduplicate, keep first 20
+        seen = []
+        for c in candidates:
+            c = c.strip()
+            if c not in seen:
+                seen.append(c)
+            if len(seen) >= 20:
+                break
+        return " | ".join(seen)
+    # Fallback: strip tags, return first 800 chars of plain text
+    plain = re.sub(r'<[^>]+>', ' ', html)
+    plain = re.sub(r'\s+', ' ', plain).strip()
+    return plain[:800]
+
+
 async def _fetch_supplier_price(
     item: str,
     unit: str,
@@ -66,18 +96,19 @@ async def _fetch_supplier_price(
             response = await client.get(url)
             if response.status_code != 200:
                 return None
-            html = response.text[:12_000]  # first 12KB is enough for search results
+            html_raw = response.text[:12_000]  # first 12KB is enough for search results
+            price_context = _extract_price_candidates(html_raw)
     except Exception:
         return None
 
-    # Ask Claude to extract the price from the HTML snippet
+    # Ask Claude to extract the price from the pre-filtered price candidates
     try:
         msg = await anthropic_client.messages.create(
             model="claude-haiku-4-5",
             max_tokens=64,
             system=(
                 "You are a price extraction assistant. "
-                "Given HTML from a supplier website, find the unit price for the specified item. "
+                "Given price information extracted from a supplier website, find the unit price for the specified item. "
                 "Return ONLY the numeric price as a decimal (e.g. '2.45'). "
                 "If no clear price is found, return exactly 'NO_PRICE'. No other text."
             ),
@@ -85,7 +116,7 @@ async def _fetch_supplier_price(
                 "role": "user",
                 "content": (
                     f"Item: {item}\nUnit: {unit}\n\n"
-                    f"HTML:\n{html}"
+                    f"Price candidates from page:\n{price_context}"
                 ),
             }],
         )
@@ -112,7 +143,8 @@ async def _web_search_price(item: str, unit: str) -> list[float]:
             response = await client.get(url)
             if response.status_code != 200:
                 return []
-            html = response.text[:20_000]
+            html_raw = response.text[:20_000]
+            price_context = _extract_price_candidates(html_raw)
     except Exception:
         return []
 
@@ -130,7 +162,7 @@ async def _web_search_price(item: str, unit: str) -> list[float]:
                 "role": "user",
                 "content": (
                     f"Item: {item}\nUnit: {unit}\n\n"
-                    f"Search results HTML:\n{html}"
+                    f"Price candidates from page:\n{price_context}"
                 ),
             }],
         )
@@ -232,6 +264,7 @@ async def _write_audit_record(
     sources_json = json.dumps(sources_meta)
 
     async with aiosqlite.connect(db_path) as db:
+        await _configure_conn(db)
         async with db.execute(
             """
             INSERT INTO price_audit
@@ -355,6 +388,7 @@ async def verify_line_items(
         if auto_updated:
             import aiosqlite
             async with aiosqlite.connect(DB_PATH) as db:
+                await _configure_conn(db)
                 await db.execute(
                     "UPDATE price_audit SET auto_updated = 1 WHERE id = ?",
                     (record["audit_id"],),
