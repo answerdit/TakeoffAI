@@ -285,6 +285,102 @@ async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
 
 
 @pytest.mark.anyio
+async def test_tournament_run_preserves_accuracy_annotations_in_response(monkeypatch):
+    """Regression: the route serializer must preserve avg_deviation_pct,
+    closed_job_count, and is_accuracy_flagged on every consensus entry.
+    Protects against refactors that silently drop annotation fields from
+    `_serialize_entry`, or forget to pass `annotate=True` for consensus
+    entries, or stop wiring `accuracy_annotations` through TournamentResult."""
+    monkeypatch.setenv("API_KEY", "test-key")
+
+    import dataclasses
+
+    @dataclasses.dataclass
+    class FakeEntry:
+        agent_name: str = "balanced"
+        total_bid: float = 150000.0
+        margin_pct: float = 12.0
+        confidence: str = "high"
+        temperature: float = 0.7
+        sample_index: int = 0
+        estimate: dict = dataclasses.field(default_factory=dict)
+        error: str = ""
+
+    @dataclasses.dataclass
+    class FakeResult:
+        tournament_id: int = 1
+        entries: list = dataclasses.field(default_factory=list)
+        consensus_entries: list = dataclasses.field(default_factory=list)
+        accuracy_annotations: dict = dataclasses.field(default_factory=dict)
+        accuracy_recommended_agent: str = None
+        rerank_active: bool = False
+
+    # Two entries — one with full data, one flagged — so a field-drop
+    # regression shows up as a concrete value mismatch, not just a missing key.
+    entries = [
+        FakeEntry(agent_name="balanced", total_bid=151_248.0),
+        FakeEntry(agent_name="aggressive", total_bid=85_626.0, confidence="low"),
+    ]
+    annotations = {
+        "balanced": {
+            "avg_deviation_pct": 0.55,
+            "closed_job_count": 6,
+            "is_accuracy_flagged": False,
+        },
+        "aggressive": {
+            "avg_deviation_pct": 10.10,
+            "closed_job_count": 5,
+            "is_accuracy_flagged": True,
+        },
+    }
+    fake_result = FakeResult(
+        entries=entries,
+        consensus_entries=entries,
+        accuracy_annotations=annotations,
+        accuracy_recommended_agent="balanced",
+        rerank_active=True,
+    )
+
+    with patch("backend.api.routes.run_tournament", new=AsyncMock(return_value=fake_result)):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                "/api/tournament/run",
+                json={
+                    "description": "Build a 10,000 sqft warehouse in Houston TX",
+                    "zip_code": "77001",
+                },
+                headers={"X-API-Key": "test-key"},
+            )
+
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Top-level hybrid-rollout signals
+    assert body["rerank_active"] is True
+    assert body["accuracy_recommended_agent"] == "balanced"
+
+    consensus = {e["agent_name"]: e for e in body["consensus_entries"]}
+    assert set(consensus.keys()) == {"balanced", "aggressive"}
+
+    # All three annotation fields must round-trip with correct VALUES — not
+    # just be present. A refactor that stubs defaults would still fail this.
+    assert consensus["balanced"]["avg_deviation_pct"] == 0.55
+    assert consensus["balanced"]["closed_job_count"] == 6
+    assert consensus["balanced"]["is_accuracy_flagged"] is False
+
+    assert consensus["aggressive"]["avg_deviation_pct"] == 10.10
+    assert consensus["aggressive"]["closed_job_count"] == 5
+    assert consensus["aggressive"]["is_accuracy_flagged"] is True
+
+    # Raw entries intentionally do NOT get annotations (only consensus does).
+    # Guard the asymmetry so it isn't accidentally flipped.
+    raw = body["entries"][0]
+    assert "avg_deviation_pct" not in raw
+    assert "closed_job_count" not in raw
+    assert "is_accuracy_flagged" not in raw
+
+
+@pytest.mark.anyio
 async def test_bid_strategy_estimate_too_large(monkeypatch):
     """estimate JSON over 500KB should return 422."""
     monkeypatch.setenv("API_KEY", "test-key")

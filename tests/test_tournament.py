@@ -446,3 +446,65 @@ def test_rerank_no_recommended_agent_preserves_order(monkeypatch):
     out, active = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), None)
     assert [e.agent_name for e in out] == [e.agent_name for e in consensus]
     assert active is False
+
+
+# ── Regression: economic & tier invariants of the hybrid rule ──────────────
+
+
+def test_rerank_flagged_cheapest_bid_still_sorts_last(monkeypatch):
+    """Economic invariant: a flagged agent must land at the bottom of the
+    consensus order even when it produced the LOWEST raw bid. This encodes
+    the whole point of the hybrid rollout — "don't trust cheap-but-inaccurate."
+    Any refactor that accidentally re-sorts by bid after the rerank, or drops
+    `is_accuracy_flagged` through the tier-key lookup, will invert this and
+    this test will catch it."""
+    import backend.config as cfg
+
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", True)
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_min_jobs", 5)
+
+    # aggressive is the cheapest ($85k) AND the flagged one
+    consensus = [
+        make_agent_result("conservative", 150_000.0),
+        make_agent_result("balanced", 140_000.0),
+        make_agent_result("aggressive", 85_000.0),
+        make_agent_result("historical_match", 155_000.0),
+        make_agent_result("market_beater", 145_000.0),
+    ]
+    out, active = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), "balanced")
+
+    assert active is True
+    cheapest = min(consensus, key=lambda e: e.total_bid)
+    assert cheapest.agent_name == "aggressive", "test fixture must put aggressive as cheapest"
+    # The cheapest bid is flagged → must sort last, not first
+    assert out[-1].agent_name == "aggressive"
+    assert out[-1].total_bid == 85_000.0
+    assert out[0].agent_name != "aggressive"
+
+
+def test_rerank_no_data_tier_sits_between_data_and_flagged(monkeypatch):
+    """Tier invariant: an agent with no deviation history must sort AFTER
+    every non-flagged agent that has data, and BEFORE any flagged agent.
+    This protects the three-tier rule from refactors that collapse tiers
+    (e.g. treating `avg_deviation_pct is None` as 0.0 and letting it outrank
+    real data, or lumping no-data in with flagged)."""
+    import backend.config as cfg
+
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_enabled", True)
+    monkeypatch.setattr(cfg.settings, "tournament_accuracy_rerank_min_jobs", 5)
+
+    consensus = _sample_consensus()
+    out, active = _maybe_rerank_by_accuracy(consensus, _sample_annotations(), "balanced")
+    assert active is True
+
+    names = [e.agent_name for e in out]
+    no_data_idx = names.index("historical_match")
+    flagged_idx = names.index("aggressive")
+
+    data_tier_agents = {"balanced", "conservative", "market_beater"}
+    data_indices = [names.index(n) for n in data_tier_agents]
+
+    assert all(
+        i < no_data_idx for i in data_indices
+    ), f"no-data agent leaked ahead of an agent with data: {names}"
+    assert no_data_idx < flagged_idx, f"no-data agent must sort before flagged agent: {names}"
