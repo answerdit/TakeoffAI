@@ -4,6 +4,7 @@ Accepts CSV, Excel, and manual JSON uploads of historical bid records.
 Thin HTTP layer; parsing and persistence delegated to helpers below.
 """
 
+import codecs
 import io
 import logging
 from typing import Optional
@@ -22,13 +23,23 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 def _validate_csv_content(content: bytes) -> None:
-    """Reject binary files disguised as CSV."""
+    """Reject binary files disguised as CSV.
+
+    Accepts any valid UTF-8 text (em dashes, accented client names, BOM-
+    prefixed Excel CSV exports). The anti-binary signal is the null byte
+    check — real CSV text never contains U+0000, while PNGs, ZIPs, and
+    other binaries do. An earlier ASCII-only check rejected the server's
+    own CSV template because it contained an em dash in the sample row.
+    """
     sample = content[:512]
-    try:
-        sample.decode("ascii")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid file content")
     if b"\x00" in sample:
+        raise HTTPException(status_code=400, detail="Invalid file content")
+    # Incremental decoder handles mid-codepoint truncation at the 512-byte
+    # sample boundary: a valid UTF-8 file whose byte 512 lands in the
+    # middle of a multi-byte sequence must not trip the guard.
+    try:
+        codecs.getincrementaldecoder("utf-8")().decode(sample, final=False)
+    except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="Invalid file content")
 
 
@@ -144,12 +155,17 @@ def _process_dataframe(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
 def _import_summary(client_id: str, bids: list[dict], errors: list[str]) -> dict:
     """Run the feedback loop update and return a summary response."""
     won_count = sum(1 for b in bids if b.get("won"))
-    profile = update_client_profile_from_upload(client_id, bids)
+    dedup_stats: dict = {}
+    profile = update_client_profile_from_upload(client_id, bids, stats_out=dedup_stats)
+    new_wins = dedup_stats.get("new_winning_examples", won_count)
+    duplicate_wins = dedup_stats.get("duplicate_winning_examples", 0)
     return {
         "status": "ok",
         "client_id": client_id,
         "rows_imported": len(bids),
         "rows_won": won_count,
+        "rows_new_wins": new_wins,
+        "rows_duplicate_wins": duplicate_wins,
         "rows_skipped": len(errors),
         "errors": errors,
         "profile_summary": {

@@ -139,7 +139,31 @@ def update_client_profile(client_id: str, winner_entry: dict) -> dict:
     return profile
 
 
-def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
+def _upload_dedup_key(example: dict) -> tuple:
+    """Stable identity for an uploaded winning example.
+
+    Uses (project_name, timestamp, total_bid). Prefers an explicit
+    ``project_name`` on ``estimate_snapshot`` (new format) but falls back to
+    parsing the em-dash-separated prefix of ``project_summary`` so profiles
+    written before this dedup fix still compare correctly.
+    """
+    snap = example.get("estimate_snapshot") or {}
+    pname = snap.get("project_name")
+    if not pname:
+        summary = snap.get("project_summary") or ""
+        pname = summary.split(" \u2014 ", 1)[0].strip()
+    try:
+        total = float(example.get("total_bid") or 0)
+    except (TypeError, ValueError):
+        total = 0.0
+    return (pname, example.get("timestamp") or "", total)
+
+
+def update_client_profile_from_upload(
+    client_id: str,
+    bids: list[dict],
+    stats_out: Optional[dict] = None,
+) -> dict:
     """
     Bulk-import historical bid records from a CSV, Excel, or manual upload.
 
@@ -147,7 +171,16 @@ def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
     won (bool). Optional: description, location, trade_type, winning_bid_amount,
     actual_cost, notes.
 
-    Only bids where won=True are added to winning_examples.
+    Only bids where won=True are added to winning_examples. Win rows are
+    deduplicated against existing examples by ``(project_name, bid_date,
+    your_bid_amount)`` so re-uploading the same file does not silently
+    double the profile — a real foot-gun since these rows feed the
+    ``historical_match`` agent's system prompt.
+
+    If ``stats_out`` is provided, it will be populated with
+    ``{"new_winning_examples": int, "duplicate_winning_examples": int}``
+    after the write. Callers that don't care can omit it.
+
     agent_elo is NOT modified (no agent produced these bids).
     Returns the updated profile.
     """
@@ -155,17 +188,35 @@ def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
     with _profile_lock(client_id):
         profile = json.loads(path.read_text()) if path.exists() else _empty_profile(client_id)
 
+        existing_keys = {
+            _upload_dedup_key(ex) for ex in profile.get("winning_examples", [])
+        }
         winning_bids = [b for b in bids if b.get("won")]
+
+        new_wins = 0
+        duplicate_wins = 0
 
         for bid in winning_bids:
             project_name = bid.get("project_name", "")
             description = bid.get("description", "")
-            summary = f"{project_name} — {description}".strip(" —") if description else project_name
+            summary = (
+                f"{project_name} \u2014 {description}".strip(" \u2014")
+                if description
+                else project_name
+            )
+            total_bid = float(bid.get("your_bid_amount", 0))
+            timestamp = bid.get("bid_date", datetime.now(timezone.utc).isoformat())
+            key = (project_name, timestamp, total_bid)
+
+            if key in existing_keys:
+                duplicate_wins += 1
+                continue
 
             example = {
                 "agent_name": "upload",
-                "total_bid": float(bid.get("your_bid_amount", 0)),
+                "total_bid": total_bid,
                 "estimate_snapshot": {
+                    "project_name": project_name,
                     "project_summary": summary,
                     "location": bid.get("location", ""),
                     "trade_type": bid.get("trade_type", "general"),
@@ -173,15 +224,21 @@ def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
                     "actual_cost": bid.get("actual_cost"),
                     "notes": bid.get("notes", ""),
                 },
-                "timestamp": bid.get("bid_date", datetime.now(timezone.utc).isoformat()),
+                "timestamp": timestamp,
                 "source": "upload",
             }
             profile["winning_examples"].append(example)
+            existing_keys.add(key)
+            new_wins += 1
 
         if len(profile["winning_examples"]) > MAX_WINNING_EXAMPLES:
             profile["winning_examples"] = profile["winning_examples"][-MAX_WINNING_EXAMPLES:]
 
-        # Update upload-specific counters (separate from tournament stats)
+        # Update upload-specific counters (separate from tournament stats).
+        # total_uploaded still reflects attempted rows so a UI showing
+        # "lifetime upload attempts" stays truthful; total_won_uploaded now
+        # counts only NEW wins actually added so re-uploads don't inflate
+        # the winning-example denominator.
         upload_stats = profile.setdefault(
             "upload_stats",
             {
@@ -190,8 +247,8 @@ def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
             },
         )
         upload_stats["total_uploaded"] = upload_stats.get("total_uploaded", 0) + len(bids)
-        upload_stats["total_won_uploaded"] = upload_stats.get("total_won_uploaded", 0) + len(
-            winning_bids
+        upload_stats["total_won_uploaded"] = (
+            upload_stats.get("total_won_uploaded", 0) + new_wins
         )
 
         # Recalculate avg_winning_bid across all winning_examples (tournaments + uploads)
@@ -209,6 +266,10 @@ def update_client_profile_from_upload(client_id: str, bids: list[dict]) -> dict:
         stats["avg_winning_bid"] = round(sum(all_bids) / len(all_bids), 2) if all_bids else 0.0
 
         path.write_text(json.dumps(profile, indent=2))
+
+    if stats_out is not None:
+        stats_out["new_winning_examples"] = new_wins
+        stats_out["duplicate_winning_examples"] = duplicate_wins
     return profile
 
 
@@ -256,6 +317,11 @@ def load_client_context(client_id: str) -> str:
 
 RED_FLAG_DEVIATION_THRESHOLD = 5.0  # % average deviation to red-flag an agent
 RED_FLAG_LOOKBACK = 5  # number of most recent jobs to consider
+
+
+def _recent_deviation_window(history: list[float]) -> list[float]:
+    """Keep report and annotation math aligned on the same trailing window."""
+    return history[-RED_FLAG_LOOKBACK:] if history else []
 
 
 def _compute_brier_score(
@@ -384,7 +450,7 @@ def get_agent_accuracy_report(client_id: str) -> dict:
     report: dict = {}
     for agent in ALL_AGENTS:
         history = deviation_history.get(agent, [])
-        recent = history[-RED_FLAG_LOOKBACK:] if history else []
+        recent = _recent_deviation_window(history)
         avg_dev = round(sum(abs(d) for d in recent) / len(recent), 4) if recent else None
         report[agent] = {
             "avg_deviation_pct": avg_dev,
@@ -417,8 +483,8 @@ def get_accuracy_annotations(client_id: str) -> dict:
     {
       "per_agent": {
         "<agent_name>": {
-          "avg_deviation_pct": float | None,   # mean |deviation| over closed jobs (last 5)
-          "closed_job_count": int,             # number of recorded deviations
+          "avg_deviation_pct": float | None,   # mean |deviation| over the last 5 closed jobs
+          "closed_job_count": int,             # total number of recorded deviations
           "is_accuracy_flagged": bool,         # True if avg_deviation > RED_FLAG_DEVIATION_THRESHOLD
         },
         ...
@@ -441,15 +507,11 @@ def get_accuracy_annotations(client_id: str) -> dict:
 
     per_agent: dict = {}
     for agent in ALL_AGENTS:
-        # Window to the same RED_FLAG_LOOKBACK the report path uses so the
-        # rerank annotation and `/api/verify/accuracy/{client}` report agree
-        # on legacy profiles that were written before update_calibration
-        # started truncating agent_deviation_history at write time.
         full_history = deviation_history.get(agent) or []
-        history = full_history[-RED_FLAG_LOOKBACK:]
-        count = len(history)
-        if count > 0:
-            avg_dev = round(sum(abs(d) for d in history) / count, 4)
+        recent = _recent_deviation_window(full_history)
+        count = len(full_history)
+        if recent:
+            avg_dev = round(sum(abs(d) for d in recent) / len(recent), 4)
         else:
             avg_dev = None
         per_agent[agent] = {
