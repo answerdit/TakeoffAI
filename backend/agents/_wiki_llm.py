@@ -14,7 +14,7 @@ from backend.config import settings
 
 WIKI_MODEL = os.getenv("WIKI_MODEL", settings.wiki_model)
 
-_anthropic = AsyncAnthropic()
+_anthropic = AsyncAnthropic(api_key=settings.anthropic_api_key or None)
 
 _SYSTEM_BASE = (
     "You are a knowledge base writer for TakeoffAI, a construction bidding system. "

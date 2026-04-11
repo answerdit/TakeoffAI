@@ -14,8 +14,9 @@ from pathlib import Path
 from anthropic import AsyncAnthropic
 
 from backend.agents.utils import call_with_json_retry, parse_llm_json
+from backend.config import settings
 
-client = AsyncAnthropic()
+client = AsyncAnthropic(api_key=settings.anthropic_api_key or None)
 
 # ── Load seed material costs with mtime-based cache ──────────────────────────
 # Reloads only when the CSV file changes on disk (picked up from PriceVerifier

@@ -22,7 +22,7 @@ from anthropic import AsyncAnthropic
 from backend.agents._db import _configure_conn
 from backend.config import settings
 
-anthropic_client = AsyncAnthropic()
+anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key or None)
 
 DB_PATH = settings.db_path
 CSV_PATH = Path(__file__).parent.parent / "data" / "material_costs.csv"

@@ -11,7 +11,7 @@ from anthropic import AsyncAnthropic
 from backend.agents.utils import call_with_json_retry
 from backend.config import settings
 
-client = AsyncAnthropic()
+client = AsyncAnthropic(api_key=settings.anthropic_api_key or None)
 
 SYSTEM_PROMPT = """You are BidToWin, an expert construction bid strategist for TakeoffAI by answerd.it.
 

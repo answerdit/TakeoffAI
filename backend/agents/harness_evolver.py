@@ -226,7 +226,8 @@ async def _run_agentic_proposer(
         "then propose improved personality prompts."
     )
 
-    client = anthropic.AsyncAnthropic()
+    from backend.config import settings as _settings
+    client = anthropic.AsyncAnthropic(api_key=_settings.anthropic_api_key or None)
     messages: list[dict] = [{"role": "user", "content": initial_message}]
     forced = False
     tool_call_count = 0

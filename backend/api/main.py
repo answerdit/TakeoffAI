@@ -159,7 +159,9 @@ if _app_env != "development" and not _raw_origins:
 
 ALLOWED_ORIGINS = (
     _raw_origins.split(",") if _raw_origins
-    else ["http://localhost:3000", "http://localhost:5173"]
+    # "null" is the Origin header browsers send for file:// pages; required for
+    # the dev workflow where index.html is opened directly without a local server.
+    else ["http://localhost:3000", "http://localhost:5173", "null"]
 )
 
 if "*" in ALLOWED_ORIGINS:
