@@ -23,7 +23,7 @@ SCHEMA_PATH = WIKI_DIR / "SCHEMA.md"
 def _safe_job_path(job_slug: str) -> Path | None:
     """Return the resolved job page path, or None if slug is unsafe."""
     page_path = (JOBS_DIR / f"{job_slug}.md").resolve()
-    if not str(page_path).startswith(str(JOBS_DIR.resolve())):
+    if not page_path.is_relative_to(JOBS_DIR.resolve()):
         logger.warning("Rejected unsafe job_slug: %s", job_slug)
         return None
     return page_path

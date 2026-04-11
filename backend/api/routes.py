@@ -20,6 +20,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from backend.agents.feedback_loop import exclude_agent as _exclude_agent, reset_agent_history as _reset_agent_history
+from backend.api.validators import validate_client_id
 from backend.agents.harness_evolver import evolve_harness as _evolve_harness, _get_lock
 from backend.agents.pre_bid_calc import preprocess_blueprint, run_prebid_calc
 from backend.agents.bid_to_win import run_bid_to_win
@@ -318,6 +319,7 @@ class ExcludeAgentRequest(BaseModel):
 @router.post("/client/{client_id}/exclude-agent")
 async def exclude_agent_endpoint(client_id: str, req: ExcludeAgentRequest):
     """Add an agent to the client's excluded list — it will be skipped in future tournaments."""
+    validate_client_id(client_id)
     try:
         profile = await asyncio.to_thread(_exclude_agent, client_id, req.agent_name)
         return {"client_id": client_id, "excluded_agents": profile.get("excluded_agents", [])}
@@ -329,6 +331,7 @@ async def exclude_agent_endpoint(client_id: str, req: ExcludeAgentRequest):
 @router.delete("/client/{client_id}/agent-history/{agent_name}")
 async def reset_agent_history_endpoint(client_id: str, agent_name: str):
     """Clear deviation history for an agent and remove its red-flag status."""
+    validate_client_id(client_id)
     try:
         calibration = await asyncio.to_thread(_reset_agent_history, client_id, agent_name)
         return {"client_id": client_id, "agent_name": agent_name, "calibration": calibration}

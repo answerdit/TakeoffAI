@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 def _ensure_client_page(client_id: str) -> None:
     """Create a minimal client page if one doesn't exist yet."""
-    client_path = _io.CLIENTS_DIR / f"{client_id}.md"
+    client_path = (_io.CLIENTS_DIR / f"{client_id}.md").resolve()
+    if not client_path.is_relative_to(_io.CLIENTS_DIR.resolve()):
+        logger.warning("Rejected unsafe client_id in wiki entity write: %s", client_id)
+        return
     if client_path.exists():
         meta, body = _io._parse_frontmatter(client_path)
         meta["total_jobs"] = meta.get("total_jobs", 0) + 1
