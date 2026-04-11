@@ -285,13 +285,22 @@ async def test_tournament_with_job_slug_fires_wiki_hook(monkeypatch, tmp_path):
 
 
 @pytest.mark.anyio
-async def test_tournament_run_preserves_accuracy_annotations_in_response(monkeypatch):
+async def test_tournament_run_preserves_accuracy_annotations_in_response(monkeypatch, tmp_path):
     """Regression: the route serializer must preserve avg_deviation_pct,
     closed_job_count, and is_accuracy_flagged on every consensus entry.
     Protects against refactors that silently drop annotation fields from
     `_serialize_entry`, or forget to pass `annotate=True` for consensus
     entries, or stop wiring `accuracy_annotations` through TournamentResult."""
     monkeypatch.setenv("API_KEY", "test-key")
+
+    # Isolate wiki capture path from the real vault — the route fires
+    # _wiki_capture_tournament unconditionally, which auto-stubs a page.
+    import backend.agents._wiki_io as _io
+    import backend.agents.wiki_manager as wm
+
+    monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
 
     import dataclasses
 
@@ -378,6 +387,211 @@ async def test_tournament_run_preserves_accuracy_annotations_in_response(monkeyp
     assert "avg_deviation_pct" not in raw
     assert "closed_job_count" not in raw
     assert "is_accuracy_flagged" not in raw
+
+
+@pytest.mark.anyio
+async def test_tournament_run_without_job_slug_auto_creates_wiki_stub(monkeypatch, tmp_path):
+    """Regression: when /api/tournament/run is called without a job_slug, the
+    capture path must auto-create a stub wiki page and feed it to
+    enrich_tournament. This is the wiring that makes the retrieval corpus
+    fill up on its own — breaking it silently starves every downstream
+    consumer of historical comparables."""
+    monkeypatch.setenv("API_KEY", "test-key")
+
+    import dataclasses
+
+    import backend.agents._wiki_io as _io
+    import backend.agents.wiki_manager as wm
+
+    jobs_dir = tmp_path / "jobs"
+    clients_dir = tmp_path / "clients"
+    monkeypatch.setattr(_io, "JOBS_DIR", jobs_dir)
+    monkeypatch.setattr(_io, "CLIENTS_DIR", clients_dir)
+    monkeypatch.setattr(wm, "JOBS_DIR", jobs_dir)
+
+    @dataclasses.dataclass
+    class FakeEntry:
+        agent_name: str = "balanced"
+        total_bid: float = 150000.0
+        margin_pct: float = 12.0
+        confidence: str = "high"
+        temperature: float = 0.7
+        sample_index: int = 0
+        estimate: dict = dataclasses.field(default_factory=dict)
+        error: str = ""
+
+    @dataclasses.dataclass
+    class FakeResult:
+        tournament_id: int = 999999
+        entries: list = dataclasses.field(default_factory=list)
+        consensus_entries: list = dataclasses.field(default_factory=list)
+        accuracy_annotations: dict = dataclasses.field(default_factory=dict)
+        accuracy_recommended_agent: str = None
+        rerank_active: bool = False
+
+    entry = FakeEntry()
+    fake_result = FakeResult(entries=[entry], consensus_entries=[entry])
+
+    with patch("backend.api.routes.run_tournament", new=AsyncMock(return_value=fake_result)):
+        with patch(
+            "backend.agents.wiki_manager.enrich_tournament", new=AsyncMock()
+        ) as mock_enrich:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                resp = await c.post(
+                    "/api/tournament/run",
+                    json={
+                        "description": "Retrofit a 5,000 sqft medical office in Abilene TX",
+                        "zip_code": "79601",
+                        "trade_type": "general",
+                        "client_id": "capturetest",
+                    },
+                    headers={"X-API-Key": "test-key"},
+                )
+
+            assert resp.status_code == 200
+
+            import asyncio
+
+            # Let the fire-and-forget helper run.
+            await asyncio.sleep(0.1)
+
+            # A stub page must have been written.
+            written = list(jobs_dir.glob("*.md"))
+            assert len(written) == 1, f"expected 1 stub page, got {[p.name for p in written]}"
+
+            meta, body = _io._parse_frontmatter(written[0])
+            assert meta["status"] == "prospect"
+            assert meta["client"] == "capturetest"
+            assert meta["trade"] == "general"
+            assert meta["zip"] == "79601"
+            assert meta["actual_cost"] is None
+            assert "medical office" in body.lower()
+
+            # Client page got auto-created via _ensure_client_page.
+            assert (clients_dir / "capturetest.md").exists()
+
+            # enrich_tournament must have been fired with the auto-created slug.
+            mock_enrich.assert_called_once()
+            args, _ = mock_enrich.call_args
+            assert args[0] == written[0].stem  # slug matches the written filename
+
+
+@pytest.mark.anyio
+async def test_judge_historical_mode_cascades_to_linked_wiki_job(monkeypatch, tmp_path):
+    """Regression: in HISTORICAL judge mode, the wiki cascade must close the
+    linked job page with status=closed and actual_cost=actual_winning_bid.
+    This is the second half of the capture loop — without it, judged
+    tournaments never become part of the retrievable corpus."""
+    import json
+    import tempfile
+    from pathlib import Path
+
+    import aiosqlite
+
+    import backend.agents._wiki_io as _io
+    import backend.agents.wiki_manager as wm
+
+    jobs_dir = tmp_path / "jobs"
+    clients_dir = tmp_path / "clients"
+    personalities_dir = tmp_path / "personalities"
+    monkeypatch.setattr(_io, "JOBS_DIR", jobs_dir)
+    monkeypatch.setattr(_io, "CLIENTS_DIR", clients_dir)
+    monkeypatch.setattr(_io, "PERSONALITIES_DIR", personalities_dir)
+    monkeypatch.setattr(wm, "JOBS_DIR", jobs_dir)
+
+    # Seed a wiki job page that a prior tournament run would have created.
+    jobs_dir.mkdir(parents=True)
+    slug = "2026-04-11-acme-retrofit-office"
+    seed_meta = {
+        "status": "tournament-complete",
+        "client": "acme",
+        "date": "2026-04-11",
+        "trade": "general",
+        "zip": "78701",
+        "tags": ["job", "tournament-complete", "general"],
+        "our_bid": None,
+        "estimate_total": None,
+        "estimate_low": None,
+        "estimate_high": None,
+        "tournament_id": 1,
+        "winner_personality": "balanced",
+        "band_low": 148000.0,
+        "band_high": 162000.0,
+        "actual_cost": None,
+        "outcome_date": None,
+    }
+    _io._write_page(
+        jobs_dir / f"{slug}.md",
+        seed_meta,
+        "# Acme Retrofit Office\n\n## Scope\n\nFull retrofit.\n",
+    )
+
+    # Mock the cascade's LLM synthesis so no real API call fires.
+    from unittest.mock import AsyncMock
+
+    async def fake_synthesize(context: str, instruction: str) -> str:
+        return "Job closed at the historical winning bid."
+
+    import backend.agents._wiki_llm as _llm
+
+    monkeypatch.setattr(_llm, "_synthesize", fake_synthesize)
+
+    # Build a temp SQLite with the capture column present.
+    with tempfile.TemporaryDirectory() as tmpdb:
+        db_path = str(Path(tmpdb) / "test.db")
+        from backend.api.main import _CREATE_TABLES, _run_migrations
+
+        async with aiosqlite.connect(db_path) as db:
+            await db.executescript(_CREATE_TABLES)
+            await _run_migrations(db)
+            await db.execute(
+                "INSERT INTO bid_tournaments "
+                "(id, client_id, project_description, zip_code, status, wiki_job_slug) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (1, "acme", "Retrofit office", "78701", "pending", slug),
+            )
+            await db.execute(
+                "INSERT INTO tournament_entries "
+                "(tournament_id, agent_name, total_bid, line_items_json, won) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (1, "balanced", 150000.0, json.dumps({"line_items": []}), 0),
+            )
+            await db.execute(
+                "INSERT INTO tournament_entries "
+                "(tournament_id, agent_name, total_bid, line_items_json, won) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (1, "aggressive", 142000.0, json.dumps({"line_items": []}), 0),
+            )
+            await db.commit()
+
+        with patch("backend.agents.judge.DB_PATH", db_path):
+            with patch(
+                "backend.agents.judge.asyncio.to_thread", new=AsyncMock(return_value={})
+            ):
+                # Stub out feedback-loop and downstream hooks to keep the test focused.
+                with patch(
+                    "backend.agents.judge.verify_line_items", new=AsyncMock(return_value=[])
+                ):
+                    from backend.agents.judge import judge_tournament
+
+                    result = await judge_tournament(
+                        tournament_id=1,
+                        actual_winning_bid=147500.0,
+                        human_notes="test close",
+                    )
+
+        # The cascade is fire-and-forget; give it a beat to write the page.
+        import asyncio
+
+        await asyncio.sleep(0.1)
+
+    assert result["wiki_job_slug"] == slug
+
+    # The cascade must have rewritten the page to closed status + actual_cost.
+    meta, _ = _io._parse_frontmatter(jobs_dir / f"{slug}.md")
+    assert meta["status"] == "closed"
+    assert meta["actual_cost"] == 147500.0
+    assert meta["outcome_date"] is not None
 
 
 @pytest.mark.anyio

@@ -164,22 +164,47 @@ async def test_csv_renamed_to_xlsx_returns_400(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_rate_limiter_returns_429_after_burst(monkeypatch):
+async def test_rate_limiter_returns_429_after_burst(monkeypatch, tmp_path):
     """Hitting an endpoint more than its rate limit should return 429."""
     monkeypatch.setenv("API_KEY", "test-key")
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        statuses = []
-        # Tournament run is limited to 10/minute — send 12 requests
-        for _ in range(12):
-            resp = await c.post(
-                "/api/tournament/run",
-                json={
-                    "description": "Build a 10000 sqft warehouse in Houston TX",
-                    "zip_code": "77001",
-                },
-                headers={"X-API-Key": "test-key"},
-            )
-            statuses.append(resp.status_code)
+
+    # Mock run_tournament so this test never makes real Anthropic calls,
+    # and isolate the wiki capture path from the real vault.
+    import dataclasses
+    from unittest.mock import AsyncMock, patch
+
+    import backend.agents._wiki_io as _io
+    import backend.agents.wiki_manager as wm
+
+    monkeypatch.setattr(_io, "JOBS_DIR", tmp_path / "jobs")
+    monkeypatch.setattr(_io, "CLIENTS_DIR", tmp_path / "clients")
+    monkeypatch.setattr(wm, "JOBS_DIR", tmp_path / "jobs")
+
+    @dataclasses.dataclass
+    class FakeResult:
+        tournament_id: int = 1
+        entries: list = dataclasses.field(default_factory=list)
+        consensus_entries: list = dataclasses.field(default_factory=list)
+        accuracy_annotations: dict = dataclasses.field(default_factory=dict)
+        accuracy_recommended_agent: str = None
+        rerank_active: bool = False
+
+    with patch(
+        "backend.api.routes.run_tournament", new=AsyncMock(return_value=FakeResult())
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            statuses = []
+            # Tournament run is limited to 10/minute — send 12 requests
+            for _ in range(12):
+                resp = await c.post(
+                    "/api/tournament/run",
+                    json={
+                        "description": "Build a 10000 sqft warehouse in Houston TX",
+                        "zip_code": "77001",
+                    },
+                    headers={"X-API-Key": "test-key"},
+                )
+                statuses.append(resp.status_code)
     assert 429 in statuses, f"Expected at least one 429, got: {set(statuses)}"
 
 

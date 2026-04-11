@@ -97,6 +97,8 @@ _MIGRATIONS = [
     # migration 4: temperature ensemble — add temperature and is_consensus columns
     """ALTER TABLE tournament_entries ADD COLUMN temperature REAL DEFAULT 0.7""",
     """ALTER TABLE tournament_entries ADD COLUMN is_consensus INTEGER DEFAULT 0""",
+    # migration 5: wiki capture bridge — link each tournament to its wiki job page
+    """ALTER TABLE bid_tournaments ADD COLUMN wiki_job_slug TEXT""",
 ]
 
 

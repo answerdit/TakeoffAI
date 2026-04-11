@@ -30,6 +30,7 @@ from backend.agents._wiki_io import (
 from backend.agents._wiki_jobs import (
     cascade_outcome,
     create_job,
+    create_job_stub,
     enrich_estimate,
     enrich_scope_from_blueprint,
     enrich_tournament,
@@ -43,6 +44,7 @@ __all__ = [
     "JOBS_DIR",
     "read_page",
     "create_job",
+    "create_job_stub",
     "enrich_estimate",
     "enrich_scope_from_blueprint",
     "enrich_tournament",

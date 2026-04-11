@@ -75,6 +75,71 @@ async def create_job(
     return {"job_slug": slug, "status": "prospect"}
 
 
+async def create_job_stub(
+    client_id: str,
+    project_name: str,
+    description: str,
+    zip_code: str,
+    trade_type: str = "general",
+) -> dict:
+    """
+    Create a job wiki page at prospect status without any LLM call.
+
+    Used by the tournament capture path, where enrich_tournament will
+    overwrite most of the body shortly after. Produces the same frontmatter
+    shape as create_job() so downstream readers (cascade_outcome,
+    historical_retrieval) work identically against stub-seeded pages.
+
+    Collision-safe: if a page at the computed slug already exists (e.g. two
+    tournaments for the same client+description on the same day), a numeric
+    suffix is appended until a free slot is found.
+    """
+    today = date.today().isoformat()
+    slug = _io._make_job_slug(client_id, project_name, today)
+    page_path = _io.JOBS_DIR / f"{slug}.md"
+
+    if page_path.exists():
+        i = 2
+        while True:
+            alt_slug = f"{slug}-{i}"
+            alt_path = _io.JOBS_DIR / f"{alt_slug}.md"
+            if not alt_path.exists():
+                slug = alt_slug
+                page_path = alt_path
+                break
+            i += 1
+
+    body = (
+        f"# {project_name}\n\n"
+        f"## Scope\n\n{description.strip()}\n\n"
+        f"## Links\n\n[[clients/{client_id}]]\n"
+    )
+
+    meta = {
+        "status": "prospect",
+        "client": client_id,
+        "date": today,
+        "trade": trade_type,
+        "zip": zip_code,
+        "tags": ["job", "prospect", trade_type],
+        "our_bid": None,
+        "estimate_total": None,
+        "estimate_low": None,
+        "estimate_high": None,
+        "tournament_id": None,
+        "winner_personality": None,
+        "band_low": None,
+        "band_high": None,
+        "actual_cost": None,
+        "outcome_date": None,
+    }
+
+    await asyncio.to_thread(_io._write_page, page_path, meta, body)
+    _ent._ensure_client_page(client_id)
+
+    return {"job_slug": slug, "status": "prospect"}
+
+
 async def enrich_scope_from_blueprint(job_slug: str, draft_text: str) -> None:
     """
     Overwrite the ## Scope section of a job page with blueprint-extracted draft text.

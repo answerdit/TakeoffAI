@@ -276,9 +276,10 @@ async def tournament_run(request: Request, req: TournamentRunRequest):
             "accuracy_recommended_agent": result.accuracy_recommended_agent,
             "rerank_active": getattr(result, "rerank_active", False),
         }
-        # Fire-and-forget wiki enrichment if job_slug provided
-        if req.job_slug:
-            _fire(_wiki_enrich_tournament(req.job_slug, response))
+        # Fire-and-forget: bridge the tournament into the wiki capture path.
+        # Auto-creates a wiki job stub when the caller didn't provide one,
+        # links the slug back to the tournament row, and enriches the page.
+        _fire(_wiki_capture_tournament(result.tournament_id, req, response))
         _fire(_ws_log_tournament(response, req.client_id, req.description))
         return response
     except Exception as exc:
@@ -428,14 +429,52 @@ async def _wiki_enrich_estimate(job_slug: str, estimate_data: dict) -> None:
         logging.exception("wiki enrich_estimate failed for %s (non-fatal)", job_slug)
 
 
-async def _wiki_enrich_tournament(job_slug: str, tournament_data: dict) -> None:
-    """Fire-and-forget: enrich wiki job page with tournament data."""
-    try:
-        from backend.agents.wiki_manager import enrich_tournament
+async def _wiki_capture_tournament(
+    tournament_id: int,
+    req: "TournamentRunRequest",
+    response: dict,
+) -> None:
+    """
+    Fire-and-forget: bridge a completed tournament into the wiki capture path.
 
-        await enrich_tournament(job_slug, tournament_data)
+    Resolves a job_slug (caller-supplied or freshly stubbed), persists it on
+    the tournament row so the judge can later cascade the outcome, and enriches
+    the wiki page with the tournament result.
+
+    All errors are logged and swallowed — this helper must never surface into
+    the caller.
+    """
+    try:
+        from backend.agents.wiki_manager import create_job_stub, enrich_tournament
+
+        job_slug = req.job_slug
+        if not job_slug:
+            first_line = req.description.split("\n", 1)[0].strip()
+            project_name = (first_line or "Untitled project")[:60]
+            stub = await create_job_stub(
+                client_id=req.client_id or "default",
+                project_name=project_name,
+                description=req.description,
+                zip_code=req.zip_code,
+                trade_type=req.trade_type,
+            )
+            job_slug = stub["job_slug"]
+
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute(
+                    "UPDATE bid_tournaments SET wiki_job_slug = ? WHERE id = ?",
+                    (job_slug, tournament_id),
+                )
+                await db.commit()
+        except Exception:
+            logging.exception(
+                "wiki_job_slug persist failed for tournament %s (non-fatal)", tournament_id
+            )
+
+        await enrich_tournament(job_slug, response)
     except Exception:
-        logging.exception("wiki enrich_tournament failed for %s (non-fatal)", job_slug)
+        logging.exception("wiki capture_tournament failed (non-fatal)")
 
 
 # ── Workspace fire-and-forget helpers ─────────────────────────────────────────

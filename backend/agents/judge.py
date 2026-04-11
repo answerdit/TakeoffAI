@@ -114,6 +114,10 @@ async def judge_tournament(
 
         entries = [dict(r) for r in rows]
         client_id = tournament["client_id"]
+        try:
+            wiki_job_slug = tournament["wiki_job_slug"]
+        except (IndexError, KeyError):
+            wiki_job_slug = None
 
         # ── Determine mode ────────────────────────────────────────────────────
         if winner_agent_name is not None:
@@ -187,6 +191,30 @@ async def judge_tournament(
             _t = asyncio.create_task(evolve_harness(client_id))
             _t.add_done_callback(_log_task_err)
 
+    # ── Cascade outcome to wiki job page (HISTORICAL mode only) ───────────────
+    # The wiki cascade needs a realized-cost-like number; in HISTORICAL mode
+    # the actual_winning_bid is the best available proxy. HUMAN/AUTO modes
+    # don't carry any cost signal, so they don't close the wiki job.
+    if wiki_job_slug and mode == JudgeMode.HISTORICAL and actual_winning_bid is not None:
+
+        async def _cascade() -> None:
+            try:
+                from backend.agents.wiki_manager import cascade_outcome
+
+                await cascade_outcome(
+                    job_slug=wiki_job_slug,
+                    status="closed",
+                    actual_cost=float(actual_winning_bid),
+                    notes=human_notes or "",
+                )
+            except Exception:
+                _log.exception(
+                    "wiki cascade_outcome failed for %s (non-fatal)", wiki_job_slug
+                )
+
+        _t = asyncio.create_task(_cascade())
+        _t.add_done_callback(_log_task_err)
+
     # ── Background price verification of winning estimate ─────────────────────
     if winner_entry:
         raw_estimate = winner_entry.get("line_items_json", "{}")
@@ -208,6 +236,7 @@ async def judge_tournament(
     return {
         "tournament_id": tournament_id,
         "client_id": client_id,
+        "wiki_job_slug": wiki_job_slug,
         "mode": mode,
         "winner_agent": winner_entry["agent_name"] if winner_entry else None,
         "winner_total_bid": winner_entry["total_bid"] if winner_entry else None,
