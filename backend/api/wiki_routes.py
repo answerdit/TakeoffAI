@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from backend.agents import wiki_manager
 from backend.api.routes import _fire, limiter
+from backend.api.validators import validate_client_id
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class JobUpdateRequest(BaseModel):
 @limiter.limit("10/minute")
 async def job_create(request: Request, req: JobCreateRequest):
     """Create a new job at prospect status."""
+    validate_client_id(req.client_id)
     try:
         result = await wiki_manager.create_job(
             client_id=req.client_id,
