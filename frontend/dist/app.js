@@ -276,9 +276,16 @@ function renderStrategy(data) {
   scenarios.forEach(s => {
     const name     = (s.scenario || s.name || '').toLowerCase();
     const isRec    = name === rec || s.recommended === true;
-    const winPct   = parseFloat(s.win_probability ?? s.win_pct ?? 0);
-    const markup   = s.markup_pct != null ? s.markup_pct : s.markup;
-    const price    = s.bid_amount ?? s.total_bid ?? s.price;
+    // BidToWin prompt contract: bid_price, markup_over_cost (%),
+    // win_probability (0.0–1.0 decimal). Older/alt shapes fall through.
+    const price    = s.bid_price ?? s.bid_amount ?? s.total_bid ?? s.price;
+    const markup   = s.markup_over_cost ?? s.markup_pct ?? s.markup;
+    const winRaw   = parseFloat(s.win_probability ?? s.win_pct ?? 0);
+    // Backend emits 0–1; legacy mocks may have emitted 0–100. Treat any
+    // value ≤ 1 as a decimal probability so both shapes render correctly.
+    const winPct   = Number.isFinite(winRaw)
+      ? (winRaw <= 1 ? Math.round(winRaw * 1000) / 10 : Math.round(winRaw * 10) / 10)
+      : 0;
     const label    = s.scenario || s.name || name;
 
     const card = document.createElement('div');
@@ -308,6 +315,8 @@ function renderStrategy(data) {
     grid.appendChild(card);
   });
 
+  renderStrategyInsights(data);
+
   // Proposal narrative
   const narrative = data.proposal_narrative || data.proposal || '';
   document.getElementById('bid-narrative').value = narrative;
@@ -321,6 +330,89 @@ function renderStrategy(data) {
   }
 
   bidResults.style.display = 'block';
+}
+
+/* Surfaces the rich analysis fields the old render dropped on the floor:
+   competitor range (with optional "basis" narrative the LLM sometimes
+   adds), scope gaps, and RFP red flags. Reuses `.notes-block` styling
+   so no new CSS is needed — every section is hidden if empty. */
+function renderStrategyInsights(data) {
+  const host = document.getElementById('bid-insights');
+  if (!host) return;
+
+  const blocks = [];
+
+  const cr = data.competitor_range;
+  if (cr && (cr.low != null || cr.mid != null || cr.high != null)) {
+    const lo = fmt$(cr.low), mid = fmt$(cr.mid), hi = fmt$(cr.high);
+    blocks.push(`
+      <div class="notes-block" style="margin-top:1rem">
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px">Competitor Range</div>
+        <div class="meta-row"><span>Low</span><span>${lo}</span></div>
+        <div class="meta-row"><span>Mid</span><span>${mid}</span></div>
+        <div class="meta-row"><span>High</span><span>${hi}</span></div>
+        ${cr.basis ? `<div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);line-height:1.55">${esc(cr.basis)}</div>` : ''}
+      </div>
+    `);
+  }
+
+  const gaps = Array.isArray(data.scope_gaps) ? data.scope_gaps.filter(Boolean) : [];
+  if (gaps.length) {
+    blocks.push(`
+      <div class="notes-block" style="margin-top:1rem">
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px">
+          Scope Gaps <span style="color:var(--text-muted);font-weight:400">(${gaps.length})</span>
+        </div>
+        <ul style="margin:0;padding-left:1.1rem;color:var(--text-dim);font-size:0.8rem;line-height:1.55">
+          ${gaps.map(g => `<li style="margin-bottom:4px">${esc(String(g))}</li>`).join('')}
+        </ul>
+      </div>
+    `);
+  }
+
+  const redFlags = Array.isArray(data.rfp_analysis?.red_flags)
+    ? data.rfp_analysis.red_flags.filter(Boolean) : [];
+  if (redFlags.length) {
+    blocks.push(`
+      <div class="notes-block" style="margin-top:1rem;border-color:rgba(255,140,0,0.35)">
+        <div style="font-weight:600;color:var(--amber);margin-bottom:6px">RFP Red Flags</div>
+        <ul style="margin:0;padding-left:1.1rem;color:var(--text-dim);font-size:0.8rem;line-height:1.55">
+          ${redFlags.map(f => `<li style="margin-bottom:4px">${esc(String(f))}</li>`).join('')}
+        </ul>
+      </div>
+    `);
+  }
+
+  const priorities = Array.isArray(data.rfp_analysis?.owner_priorities)
+    ? data.rfp_analysis.owner_priorities.filter(Boolean) : [];
+  if (priorities.length) {
+    blocks.push(`
+      <div class="notes-block" style="margin-top:1rem">
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px">Owner Priorities</div>
+        <ul style="margin:0;padding-left:1.1rem;color:var(--text-dim);font-size:0.8rem;line-height:1.55">
+          ${priorities.map(p => `<li style="margin-bottom:4px">${esc(String(p))}</li>`).join('')}
+        </ul>
+      </div>
+    `);
+  }
+
+  const rationale = data.recommendation_rationale;
+  if (rationale) {
+    blocks.push(`
+      <div class="notes-block" style="margin-top:1rem">
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px">Why This Scenario</div>
+        <div style="color:var(--text-dim);font-size:0.8rem;line-height:1.6">${esc(String(rationale))}</div>
+      </div>
+    `);
+  }
+
+  if (blocks.length) {
+    host.innerHTML = blocks.join('');
+    host.style.display = 'block';
+  } else {
+    host.innerHTML = '';
+    host.style.display = 'none';
+  }
 }
 
 /* ── Copy narrative ────────────────────────────────────────────────── */
