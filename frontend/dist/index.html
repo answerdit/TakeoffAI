@@ -73,17 +73,17 @@
         </div>
 
         <div class="field full">
-          <label for="est-desc">Project Description</label>
-          <div class="mic-field-wrap">
-            <textarea id="est-desc" placeholder="e.g. 2,400 sqft single-story commercial office build-out with open floor plan, 2 restrooms, break room. Includes framing, drywall, electrical, plumbing rough-in, and painting." rows="4"></textarea>
+          <label for="est-desc" class="mic-label-row">
+            Project Description
             <button id="mic-btn" type="button" class="mic-btn"
                     aria-label="Click to start recording" aria-pressed="false"
                     title="Click to record · click again to stop · Chrome/Edge only · audio processed by your browser, not stored by this app">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="15" height="15" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden="true">
                 <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2z"/>
               </svg>
             </button>
-          </div>
+          </label>
+          <textarea id="est-desc" placeholder="e.g. 2,400 sqft single-story commercial office build-out with open floor plan, 2 restrooms, break room. Includes framing, drywall, electrical, plumbing rough-in, and painting." rows="4"></textarea>
           <div id="mic-error" class="mic-error" role="alert" aria-live="assertive"></div>
           <div id="mic-undo" class="mic-undo" style="display:none">
             <button id="mic-undo-btn" type="button">↩ Undo last dictation</button>

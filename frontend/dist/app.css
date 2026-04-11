@@ -669,29 +669,25 @@
   .agent-card.lowest-bid .agent-bid { color: var(--amber); }
 
   /* ── Voice mic button ──────────────────────────────────────── */
-  .mic-field-wrap {
-    position: relative;
-  }
-  .mic-field-wrap textarea {
-    padding-right: 42px;
+  .mic-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
   .mic-btn {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    background: var(--bg-input);
+    background: none;
     border: 1px solid var(--border-solid);
     border-radius: 6px;
-    padding: 6px 7px;
+    padding: 3px 5px;
     cursor: pointer;
     color: #666;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: color .15s, border-color .15s, background .15s;
-    z-index: 2;
     line-height: 1;
     user-select: none;
+    flex-shrink: 0;
   }
   .mic-btn:hover { color: var(--text); border-color: var(--border-solid); }
   .mic-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
