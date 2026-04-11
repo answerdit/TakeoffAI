@@ -124,3 +124,100 @@ def test_skips_malformed_files(patch_jobs_dir, caplog):
 
     assert len(result) == 1
     assert result[0]["project_name"] == "good-job"
+
+
+def test_all_resolved_statuses_accepted(patch_jobs_dir):
+    """`won`, `lost`, and `closed` must all surface in retrieval. Regression
+    guard: the resolved-status set is load-bearing — dropping any of the three
+    silently starves downstream rerank of signal from that job class."""
+    jobs_dir = patch_jobs_dir
+    _write_job("won-job", _base_meta(status="won"), "body", jobs_dir)
+    _write_job("lost-job", _base_meta(status="lost"), "body", jobs_dir)
+    _write_job("closed-job", _base_meta(status="closed"), "body", jobs_dir)
+    _write_job("prospect-job", _base_meta(status="prospect"), "body", jobs_dir)
+    _write_job("tc-job", _base_meta(status="tournament-complete"), "body", jobs_dir)
+
+    result = get_comparable_jobs("acme", "residential", "kitchen", zip_code="76801")
+    outcomes = {r["outcome"] for r in result}
+    assert outcomes == {"won", "lost", "closed"}
+
+
+def test_score_formula_is_precise(patch_jobs_dir):
+    """Pin the exact score math so silent retuning shows up as a test failure.
+    Same client (+10) + trade matched (+5) + zip3 matched (+2) + jaccard(0.0)×3
+    = 17.0 exactly when the body has no token overlap with the query."""
+    jobs_dir = patch_jobs_dir
+    _write_job(
+        "precise",
+        _base_meta(client="acme", trade="residential", zip="76801"),
+        "zzz qqq xxx yyy",  # zero overlap with query below
+        jobs_dir,
+    )
+    result = get_comparable_jobs("acme", "residential", "kitchen remodel", zip_code="76801")
+    assert len(result) == 1
+    assert result[0]["similarity_score"] == 17.0
+
+
+def test_zip3_bonus_applied_only_on_prefix_match(patch_jobs_dir):
+    """zip3 bonus is +2.0, applied only when the first three chars match.
+    Two same-client jobs with different zips should see a 2.0 score gap."""
+    jobs_dir = patch_jobs_dir
+    _write_job(
+        "near",
+        _base_meta(client="acme", zip="76802"),  # shares 768 prefix
+        "zzz qqq xxx",
+        jobs_dir,
+    )
+    _write_job(
+        "far",
+        _base_meta(client="acme", zip="90210"),  # no prefix overlap
+        "zzz qqq xxx",
+        jobs_dir,
+    )
+    result = get_comparable_jobs("acme", "residential", "kitchen", zip_code="76801")
+    by_name = {r["project_name"]: r for r in result}
+    assert by_name["near"]["similarity_score"] - by_name["far"]["similarity_score"] == 2.0
+
+
+def test_empty_query_zip_skips_zip_bonus_gracefully(patch_jobs_dir):
+    """When caller passes zip_code='', retrieval must not crash and must
+    simply skip the zip bonus. Score should equal 10 + 5 + 0 + 0 = 15.0."""
+    jobs_dir = patch_jobs_dir
+    _write_job("job", _base_meta(client="acme", zip="76801"), "zzz qqq", jobs_dir)
+    result = get_comparable_jobs("acme", "residential", "kitchen", zip_code="")
+    assert len(result) == 1
+    assert result[0]["similarity_score"] == 15.0
+
+
+def test_numeric_zip_in_frontmatter_still_matches(patch_jobs_dir):
+    """YAML may parse '78701' as an int when no quotes are present. Retrieval
+    coerces via str(), so numeric and string zips must both match. Regression
+    guard: if anyone removes the str() coercion, this test catches it."""
+    jobs_dir = patch_jobs_dir
+    _write_job("numeric-zip", _base_meta(client="acme", zip=78701), "zzz", jobs_dir)
+    result = get_comparable_jobs("acme", "residential", "kitchen", zip_code="78701")
+    assert len(result) == 1
+    # +2.0 zip bonus must have been applied
+    assert result[0]["similarity_score"] == 17.0
+
+
+def test_limit_parameter_caps_results(patch_jobs_dir):
+    """Explicit limit must cap the return list while preserving rank order."""
+    jobs_dir = patch_jobs_dir
+    for i in range(7):
+        _write_job(f"job-{i}", _base_meta(client="acme"), "zzz qqq xxx", jobs_dir)
+    result = get_comparable_jobs("acme", "residential", "kitchen", limit=3)
+    assert len(result) == 3
+
+
+def test_gitkeep_file_is_ignored(patch_jobs_dir):
+    """A `.gitkeep` file in jobs/ must not be parsed as a job page. Regression
+    guard: the filename-based skip in retrieval is the only thing preventing
+    _parse_frontmatter from raising on the empty placeholder file."""
+    jobs_dir = patch_jobs_dir
+    (jobs_dir / ".gitkeep").write_text("", encoding="utf-8")
+    _write_job("real-job", _base_meta(client="acme"), "kitchen body", jobs_dir)
+
+    result = get_comparable_jobs("acme", "residential", "kitchen", zip_code="76801")
+    assert len(result) == 1
+    assert result[0]["project_name"] == "real-job"
