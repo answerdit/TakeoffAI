@@ -13,6 +13,7 @@ from typing import Optional
 import aiosqlite
 
 from backend.agents._db import _configure_conn
+from backend.agents.historical_retrieval import format_comparables_for_prompt, get_comparable_jobs
 from backend.agents.pre_bid_calc import run_prebid_calc_with_modifier
 from backend.config import settings
 
@@ -36,7 +37,6 @@ You are pricing this job to protect margin and avoid cost overruns.
 - Labor burden at 1.55x (maximum end of range)
 - Assume worst-case quantities for any ambiguous scope
 - Your goal: maximize margin protection, zero risk of underbid""",
-
     "balanced": """## BIDDING PERSONALITY: BALANCED
 You are pricing this job at standard market rates.
 - Use midpoint of cost ranges for materials
@@ -44,7 +44,6 @@ You are pricing this job at standard market rates.
 - Quantities reflect the most likely interpretation of scope
 - No extra contingency — rely on the provided overhead percentage
 - Your goal: competitive, fair-market estimate that reflects true cost""",
-
     "aggressive": """## BIDDING PERSONALITY: AGGRESSIVE
 You are pricing this job lean to win on price.
 - Interpolate unit costs toward the LOW end of any range
@@ -52,14 +51,12 @@ You are pricing this job lean to win on price.
 - Parse scope narrowly — include only items explicitly stated
 - Quantities are optimistic (assume efficient crew, no waste)
 - Your goal: lowest defensible number that still covers true cost""",
-
     "historical_match": """## BIDDING PERSONALITY: HISTORICAL MATCH
 You are pricing this job to replicate the client's past winning bid style.
 - Mirror the overhead and margin percentages that have won before
 - Match the level of line-item detail used in their winning bids
 - Weight unit costs toward ranges that produced winning numbers historically
 - Your goal: produce an estimate indistinguishable from their previous wins""",
-
     "market_beater": """## BIDDING PERSONALITY: MARKET BEATER
 You are pricing this job to sit just below estimated competitor range.
 - Price materials at low-to-mid range
@@ -71,6 +68,7 @@ You are pricing this job to sit just below estimated competitor range.
 
 
 # ── Result types ──────────────────────────────────────────────────────────────
+
 
 @dataclass
 class AgentResult:
@@ -93,6 +91,7 @@ class TournamentResult:
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
+
 async def _run_single_agent(
     agent_name: str,
     description: str,
@@ -103,6 +102,7 @@ async def _run_single_agent(
     system_prompt_modifier: str,
     temperature: float = 0.7,
     sample_index: int = 0,
+    historical_comparables: str = "",
 ) -> AgentResult:
     """Execute one PreBidCalc call directly (async)."""
     async with _LLM_SEM:
@@ -114,6 +114,7 @@ async def _run_single_agent(
                 overhead_pct,
                 margin_pct,
                 system_prompt_modifier,
+                historical_comparables=historical_comparables or None,
                 temperature=temperature,
             )
             return AgentResult(
@@ -195,9 +196,12 @@ async def _save_entries(
     from datetime import datetime, timezone
 
     for result in results:
-        is_consensus = 1 if (
-            result.agent_name, result.total_bid, result.temperature, result.sample_index
-        ) in consensus_keys else 0
+        is_consensus = (
+            1
+            if (result.agent_name, result.total_bid, result.temperature, result.sample_index)
+            in consensus_keys
+            else 0
+        )
         await db.execute(
             """INSERT INTO tournament_entries
                (tournament_id, agent_name, total_bid, line_items_json, won, score, temperature, is_consensus)
@@ -231,16 +235,13 @@ async def _save_entries(
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "estimate": result.estimate,
                 }
-                (trace_dir / f"{result.agent_name}.json").write_text(
-                    json.dumps(trace, indent=2)
-                )
+                (trace_dir / f"{result.agent_name}.json").write_text(json.dumps(trace, indent=2))
         except Exception as exc:
-            logger.warning(
-                "Failed to write trace files for tournament %s: %s", tournament_id, exc
-            )
+            logger.warning("Failed to write trace files for tournament %s: %s", tournament_id, exc)
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
+
 
 async def run_tournament(
     description: str,
@@ -269,6 +270,7 @@ async def run_tournament(
     if client_id and "historical_match" in personalities:
         try:
             from backend.agents.feedback_loop import load_client_context
+
             client_context = await asyncio.to_thread(load_client_context, client_id)
         except Exception:
             pass
@@ -277,18 +279,38 @@ async def run_tournament(
     excluded_agents: list[str] = []
     if client_id:
         from backend.agents.feedback_loop import _profile_path
+
         _prof_path = _profile_path(client_id)
         if _prof_path.exists():
             import json as _json
+
             _prof = _json.loads(_prof_path.read_text())
             excluded_agents = _prof.get("excluded_agents", [])
 
     agents_to_run = [name for name in personalities if name not in excluded_agents]
 
+    historical_comparables_block = ""
+    if client_id:
+        try:
+            comparables = get_comparable_jobs(
+                client_id=client_id,
+                trade_type=trade_type,
+                description=description,
+                zip_code=zip_code,
+                limit=5,
+            )
+            historical_comparables_block = format_comparables_for_prompt(comparables)
+        except Exception:
+            import logging
+
+            logging.exception("historical retrieval failed (non-fatal)")
+            historical_comparables_block = ""
+
     # Build coroutines grouped by personality so we can fire one warmup per
     # personality first (to populate the Anthropic prompt cache) before
     # releasing the rest in parallel.
     from collections import defaultdict
+
     tasks_by_personality: dict[str, list] = defaultdict(list)
     for name in agents_to_run:
         modifier = PERSONALITY_PROMPTS[name]
@@ -298,10 +320,16 @@ async def run_tournament(
             for sample_idx in range(n_samples):
                 tasks_by_personality[name].append(
                     _run_single_agent(
-                        name, description, zip_code, trade_type,
-                        overhead_pct, margin_pct, modifier,
+                        name,
+                        description,
+                        zip_code,
+                        trade_type,
+                        overhead_pct,
+                        margin_pct,
+                        modifier,
                         temperature=temp,
                         sample_index=sample_idx,
+                        historical_comparables=historical_comparables_block,
                     )
                 )
 
@@ -315,13 +343,17 @@ async def run_tournament(
     remaining = [t for _group in tasks_by_personality.values() for t in _group[1:]]
     rest_raw = list(await asyncio.gather(*remaining, return_exceptions=True))
     rest_results: list[AgentResult] = [
-        r if isinstance(r, AgentResult) else AgentResult(
-            agent_name="unknown",
-            estimate={},
-            total_bid=0.0,
-            margin_pct=0.0,
-            confidence="low",
-            error=str(r),
+        (
+            r
+            if isinstance(r, AgentResult)
+            else AgentResult(
+                agent_name="unknown",
+                estimate={},
+                total_bid=0.0,
+                margin_pct=0.0,
+                confidence="low",
+                error=str(r),
+            )
         )
         for r in rest_raw
     ]
@@ -336,7 +368,9 @@ async def run_tournament(
     async with aiosqlite.connect(DB_PATH) as db:
         await _configure_conn(db)
         tournament_id = await _save_tournament(db, client_id, description, zip_code)
-        await _save_entries(db, tournament_id, results, consensus_keys, client_id, description, zip_code)
+        await _save_entries(
+            db, tournament_id, results, consensus_keys, client_id, description, zip_code
+        )
 
     return TournamentResult(
         tournament_id=tournament_id,

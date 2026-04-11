@@ -70,7 +70,7 @@ async def _ensure_costs_fresh() -> None:
     if not _costs_cache:
         # Cold start: serialise to prevent thundering herd.
         async with _costs_refresh_lock:
-            if not _costs_cache:            # re-check: another coroutine may have loaded while we waited
+            if not _costs_cache:  # re-check: another coroutine may have loaded while we waited
                 await asyncio.to_thread(_sync_load)
         return
     # Warm path: mtime check off-loop — fast no-op on hit, reload on CSV change.
@@ -88,7 +88,10 @@ def _format_cost_table() -> str:
     costs = _sync_load()
     if not costs:
         return "(no seed data available)"
-    lines = ["| Item | Unit | Low $/unit | High $/unit | Trade |", "| --- | --- | --- | --- | --- |"]
+    lines = [
+        "| Item | Unit | Low $/unit | High $/unit | Trade |",
+        "| --- | --- | --- | --- | --- |",
+    ]
     for row in costs:
         lines.append(
             f"| {row['item']} | {row['unit']} | ${row['low_cost']} | ${row['high_cost']} | {row['trade_category']} |"
@@ -148,6 +151,7 @@ Always return valid JSON in this exact format — no markdown fences, no extra t
 def _build_system_prompt() -> str:
     """Build system prompt with current material costs (reloaded from CSV)."""
     return _SYSTEM_PROMPT_TEMPLATE.format(cost_table=_format_cost_table())
+
 
 # ── Blueprint extraction prompts ──────────────────────────────────────────────
 
@@ -215,7 +219,11 @@ async def preprocess_blueprint(
                     {
                         "type": "text",
                         "text": BLUEPRINT_EXTRACTION_PROMPT.format(
-                            zip_note=f"The project is located in zip code {zip_code}." if zip_code else "No zip code provided — omit location-specific cost adjustments.",
+                            zip_note=(
+                                f"The project is located in zip code {zip_code}."
+                                if zip_code
+                                else "No zip code provided — omit location-specific cost adjustments."
+                            ),
                             trade_type=trade_type,
                         ),
                     },
@@ -252,6 +260,7 @@ async def run_prebid_calc_with_modifier(
     overhead_pct: float = 20.0,
     margin_pct: float = 12.0,
     system_prompt_modifier: str | None = None,
+    historical_comparables: str | None = None,
     temperature: float = 0.7,
 ) -> dict:
     """
@@ -262,6 +271,8 @@ async def run_prebid_calc_with_modifier(
     system = _build_system_prompt()
     if system_prompt_modifier:
         system = system + f"\n\n---\n\n{system_prompt_modifier}"
+    if historical_comparables:
+        system = system + f"\n\n---\n\n{historical_comparables}"
 
     user_message = f"""Project Description: {description}
 Zip Code: {zip_code}
@@ -272,6 +283,7 @@ Target Margin %: {margin_pct}
 Please generate a detailed line-item cost estimate for this project."""
 
     from backend.config import settings
+
     return await call_with_json_retry(
         client,
         model=settings.claude_model,
