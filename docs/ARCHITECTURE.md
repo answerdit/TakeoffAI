@@ -4,14 +4,15 @@
 
 ```
 TakeoffAI
-├── PreBidCalc Agent      ← scope → line-item estimate
-├── BidToWin Agent        ← estimate + RFP → bid strategy + proposal
-├── Tournament            ← N personalities bid same job in parallel
-├── Judge                 ← scores entries, picks winner
-├── FeedbackLoop          ← per-client ELO + win history
-├── PriceVerifier         ← audits unit prices against web sources
-├── HarnessEvolver        ← agentic loop rewrites losing personalities
-└── WikiManager           ← LLM-maintained Obsidian knowledge base
+├── PreBidCalc Agent         ← scope → line-item estimate
+├── BidToWin Agent           ← estimate + RFP → bid strategy + proposal
+├── Tournament               ← N personalities bid same job in parallel
+├── Judge                    ← scores entries, picks winner, cascades outcome
+├── FeedbackLoop             ← per-client ELO + win history
+├── PriceVerifier            ← audits unit prices against web sources
+├── HarnessEvolver           ← agentic loop rewrites losing personalities
+├── WikiManager              ← LLM-maintained Obsidian knowledge base
+└── HistoricalRetrieval      ← reads closed wiki jobs → injects comparables into Tournament
 ```
 
 ## System Architecture
@@ -93,6 +94,7 @@ TakeoffAI
   - `HISTORICAL` — closest entry to `actual_winning_bid` wins
   - `AUTO` — uses client ELO win-rates if ≥20 tournaments; otherwise lowest bid
 - **Post-judge triggers:** FeedbackLoop update, background PriceVerifier, HarnessEvolver if dominance detected
+- **Wiki cascade (HISTORICAL only):** when `bid_tournaments.wiki_job_slug` is set, fires `cascade_outcome(status="closed", actual_cost=actual_winning_bid)` in the background. This is the write-side that populates the retrieval corpus.
 
 ### FeedbackLoop
 - **Storage:** `backend/data/client_profiles/{client_id}.json`
@@ -116,6 +118,13 @@ TakeoffAI
 - **Storage:** `wiki/` directory (Obsidian vault, git-tracked)
 - **Pages:** jobs, clients, personalities, materials — all with YAML frontmatter
 - **Features:** LLM synthesis, fire-and-forget enrichment, lint, cascade on outcome
+- **Auto-capture:** every `POST /api/tournament/run` fires `_wiki_capture_tournament` (in `routes.py`), which writes a no-LLM stub via `create_job_stub`, persists the slug onto `bid_tournaments.wiki_job_slug`, then calls `enrich_tournament` to append the narrative section.
+
+### HistoricalRetrieval (`backend/agents/historical_retrieval.py`)
+- **Read path:** `wiki/jobs/*.md` filtered by `status ∈ {won, lost, closed}` and matching `trade_type`
+- **Scoring:** `10.0` same-client bonus + `5.0` trade match + `2.0` zip3 prefix match + `3.0 × jaccard(query, body)` — deterministic, no LLM
+- **Consumer:** `tournament.py` calls `get_comparable_jobs()` before dispatching personality grid; `format_comparables_for_prompt()` injects the result into every personality's system prompt.
+- **Self-feeding:** the corpus grows every time a tournament is judged in HISTORICAL mode via the WikiManager cascade above.
 
 ## Data Layer
 
@@ -123,10 +132,12 @@ TakeoffAI
 
 | Table | Purpose |
 |---|---|
-| `bid_tournaments` | One row per tournament run |
+| `bid_tournaments` | One row per tournament run; `wiki_job_slug` column (migration 5) links to `wiki/jobs/<slug>.md` |
 | `tournament_entries` | One row per agent per tournament |
 | `price_audit` | Historical price verification results |
 | `review_queue` | Flagged line items awaiting review |
+
+Additive migrations live in `backend/api/main.py::_MIGRATIONS`, tracked via `PRAGMA user_version`. Never modify an existing migration — append new `ALTER TABLE` statements.
 
 ### File-Based Storage
 

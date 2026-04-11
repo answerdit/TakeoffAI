@@ -48,6 +48,8 @@ The HarnessEvolver agent reads tournament trace files, identifies which personal
 | `FeedbackLoop` | Maintains per-client ELO profiles, win rates, and winning bid examples that feed future tournaments |
 | `PriceVerifier` | Cross-checks LLM unit prices against current web sources; flags deviations above 5%; updates seed CSVs automatically |
 | `HarnessEvolver` | Agentic self-improvement loop: reads traces, diagnoses underperformers, rewrites prompts, commits to git |
+| `WikiManager` | LLM-maintained Obsidian knowledge base — auto-creates a job page for every tournament, cascades outcome on judge, feeds `HistoricalRetrieval` |
+| `HistoricalRetrieval` | Deterministic similarity lookup over `wiki/jobs/*.md`; injects realized-cost comparables into future tournament prompts |
 
 ---
 
@@ -132,7 +134,7 @@ TakeoffAI/
  │   └── scheduler.py             # Nightly price verification batch job
  ├── frontend/dist/               # Single-page app (no build step)
  ├── installer/                   # USB deploy scripts
- ├── tests/                       # pytest suite (75 tests)
+ ├── tests/                       # pytest suite (179 tests)
  ├── docs/                        # Architecture and design specs
  ├── Dockerfile
  ├── docker-compose.yml
@@ -163,6 +165,7 @@ TakeoffAI/
 - [x] FeedbackLoop — per-client ELO profiles and win statistics
 - [x] PriceVerifier — web-sourced unit price auditing with CSV auto-update
 - [x] HarnessEvolver — agentic self-improving prompt optimizer
+- [x] WikiManager + HistoricalRetrieval — self-filling corpus of closed jobs that feeds comparables into future tournaments
 - [x] Frontend UI — estimate form, bid strategy, tournament tab, bid history import
 - [x] Docker packaging and USB installer
 - [ ] Hosted version at app.takeoffai.ai
