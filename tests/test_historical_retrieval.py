@@ -111,6 +111,36 @@ def test_format_includes_key_numbers():
     assert "44,120" in output
 
 
+def test_realized_margin_handles_zero_our_bid():
+    jobs = [
+        {
+            "project_name": "loss-leader",
+            "date": "2025-11-03",
+            "trade": "residential",
+            "zip": "76801",
+            "our_bid": 0,
+            "estimate_total": None,
+            "actual_cost": 44120,
+            "outcome": "won",
+            "similarity_score": 12.0,
+        }
+    ]
+
+    output = format_comparables_for_prompt(jobs)
+    assert "Our bid: $0" in output
+    assert "Actual cost: $44,120" in output
+    assert "Realized margin" not in output
+
+
+def test_cross_client_rows_are_intentionally_returned(patch_jobs_dir):
+    jobs_dir = patch_jobs_dir
+    _write_job("same-client", _base_meta(client="acme"), "kitchen remodel work", jobs_dir)
+    _write_job("other-client", _base_meta(client="other"), "kitchen remodel work", jobs_dir)
+
+    result = get_comparable_jobs("acme", "residential", "kitchen remodel")
+    assert [row["project_name"] for row in result] == ["same-client", "other-client"]
+
+
 def test_skips_malformed_files(patch_jobs_dir, caplog):
     jobs_dir = patch_jobs_dir
     bad_path = jobs_dir / "bad-yaml.md"

@@ -351,6 +351,61 @@ async def test_run_tournament_attaches_client_annotations(tmp_path, monkeypatch)
     assert len(result.consensus_entries) == 5
 
 
+@pytest.mark.anyio
+async def test_historical_retrieval_runs_off_event_loop(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "backend.agents.tournament.DB_PATH",
+        str(tmp_path / "test.db"),
+    )
+
+    import aiosqlite
+    import backend.agents.feedback_loop as fl
+
+    from backend.api.main import _CREATE_TABLES
+
+    monkeypatch.setattr(fl, "PROFILES_DIR", tmp_path / "profiles")
+    (tmp_path / "profiles").mkdir()
+
+    async with aiosqlite.connect(str(tmp_path / "test.db")) as db:
+        await db.executescript(_CREATE_TABLES)
+        for sql in [
+            "ALTER TABLE tournament_entries ADD COLUMN temperature REAL DEFAULT 0.7",
+            "ALTER TABLE tournament_entries ADD COLUMN is_consensus INTEGER DEFAULT 0",
+        ]:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
+        await db.commit()
+
+    to_thread_calls: list[str] = []
+
+    async def fake_to_thread(func, *args, **kwargs):
+        to_thread_calls.append(getattr(func, "__name__", repr(func)))
+        if getattr(func, "__name__", "") == "get_comparable_jobs":
+            return []
+        return func(*args, **kwargs)
+
+    with patch(
+        "backend.agents.tournament.asyncio.to_thread",
+        new=AsyncMock(side_effect=fake_to_thread),
+    ):
+        with patch(
+            "backend.agents.tournament.run_prebid_calc_with_modifier",
+            new=AsyncMock(return_value=FAKE_ESTIMATE),
+        ):
+            from backend.agents.tournament import run_tournament
+
+            await run_tournament(
+                description="Office buildout",
+                zip_code="75001",
+                client_id="acme",
+                n_samples=1,
+            )
+
+    assert "get_comparable_jobs" in to_thread_calls
+
+
 # ── Hybrid rollout phase 2: feature-flagged re-ranking ──────────────────────
 
 

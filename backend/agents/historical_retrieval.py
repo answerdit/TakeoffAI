@@ -5,13 +5,13 @@ No LLM calls. Empty vault → returns [] without error.
 
 Tenancy model: TakeoffAI is single-tenant by deployment — one contractor per
 install. `client_id` here is the *contractor's customer* (homeowner, GC,
-property manager), not a multi-tenant boundary. Cross-customer retrieval is
-intentional: pricing a kitchen remodel for customer A should learn from
-kitchen remodels the same contractor did for customers B, C, and D. The
-10.0 same-client bonus is recency/relationship weighting, not an isolation
-gate. If TakeoffAI ever goes multi-tenant (hosted app.takeoffai.ai), this
-module must grow a hard filter at the contractor level, not the client
-level.
+property manager), not a multi-tenant or security boundary. Cross-customer
+retrieval is intentional: pricing a kitchen remodel for customer A should
+learn from kitchen remodels the same contractor did for customers B, C, and
+D. The 10.0 same-client bonus is recency/relationship weighting, not an
+isolation gate. If TakeoffAI ever goes multi-tenant (hosted app.takeoffai.ai),
+this module must grow a hard filter at the contractor or organization level,
+not the client level.
 """
 
 import logging
