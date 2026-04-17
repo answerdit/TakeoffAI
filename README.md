@@ -76,7 +76,7 @@ cp .env.template .env
 # Optionally set API_KEY= for endpoint authentication
 
 # Install and run (dev)
-uv sync
+uv sync --all-extras
 uv run uvicorn backend.api.main:app --reload
 # Open frontend/dist/index.html in your browser
 ```
